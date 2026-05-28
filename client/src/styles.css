@@ -427,41 +427,42 @@ button { font: inherit; }
   gap: 10px;
 }
 
-/* ---------- Review effort pill ---------- */
+/* ---------- Review effort pill (compact, fits on SUMMARY row) ---------- */
 .effort-pill {
   position: relative;
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 3px;
-  padding: 6px 10px 7px;
-  border-radius: 8px;
+  gap: 2px;
+  padding: 4px 9px 5px;
+  border-radius: 6px;
   border: 1px solid var(--border);
   background: var(--bg-card);
-  min-width: 200px;
+  min-width: 0;
   font-feature-settings: "tnum" 1;
 }
 .effort-line1 {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
   line-height: 1.2;
+  white-space: nowrap;
 }
-.effort-emoji { font-size: 15px; line-height: 1; }
-.effort-label { flex: 1; }
+.effort-emoji { font-size: 13px; line-height: 1; }
+.effort-label { /* no flex:1 — sits inline with the meter */ }
 
 .effort-info {
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
   border: 1px solid var(--border);
   background: var(--bg-elev);
   color: var(--fg-dim);
   font-family: serif;
   font-style: italic;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
   cursor: pointer;
   display: grid;
@@ -470,19 +471,21 @@ button { font: inherit; }
   line-height: 1;
   flex-shrink: 0;
   transition: color 0.1s, border-color 0.1s;
+  margin-left: 2px;
 }
 .effort-info:hover { color: var(--fg); border-color: var(--border-strong); }
 
-/* 4-segment intensity meter */
+/* 4-segment intensity meter — inline with the label now */
 .effort-meter {
-  display: flex;
-  gap: 3px;
-  margin: 1px 0;
+  display: inline-flex;
+  gap: 2px;
+  margin-left: 4px;
+  align-items: center;
 }
 .effort-dot {
-  flex: 1;
+  width: 8px;
   height: 4px;
-  border-radius: 2px;
+  border-radius: 1px;
   background: var(--border);
   transition: background 0.15s;
 }
@@ -494,7 +497,7 @@ button { font: inherit; }
 .effort-pill.effort-pending .effort-dot.filled { background: var(--fg-faint); }
 
 .effort-line2 {
-  font-size: 10.5px;
+  font-size: 10px;
   color: var(--fg-faint);
   letter-spacing: 0.02em;
   white-space: nowrap;
