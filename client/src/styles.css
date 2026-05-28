@@ -104,6 +104,34 @@ button { font: inherit; }
   font-family: var(--mono);
   font-size: 12px;
 }
+
+/* Author chip — small avatar + handle, links to GH profile */
+.author-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  text-decoration: none;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 2px 8px 2px 2px;
+  color: var(--fg-dim);
+  font-size: 12px;
+  transition: border-color 0.1s, color 0.1s, background 0.1s;
+  flex-shrink: 0;
+}
+.author-chip:hover {
+  border-color: var(--accent);
+  color: var(--fg);
+  background: var(--bg-card-hover);
+}
+.author-chip-avatar {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--bg-elev);
+}
+.author-chip-handle { font-family: var(--mono); font-size: 11px; }
 .kbd-hint {
   border: 1px solid var(--border);
   border-radius: 4px;

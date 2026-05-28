@@ -64,6 +64,21 @@ export interface APIError {
   detail?: string;
 }
 
+/**
+ * A contiguous block of lines all written by the same commit, on the head
+ * version of a file. Used to render hover-blame in the diff editor.
+ */
+export interface BlameRange {
+  startingLine: number;
+  endingLine: number;
+  authorLogin: string | null;
+  authorName: string | null;
+  authoredDate: string; // ISO
+  commitSha: string;
+  commitMessageHeadline: string;
+  commitUrl: string;
+}
+
 export interface TLDR {
   /** Streamed markdown text. */
   text: string;

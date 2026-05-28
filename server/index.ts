@@ -14,6 +14,7 @@ import { diagramRouter } from './routes/diagram.js';
 import { aiCommentRouter } from './routes/aiComment.js';
 import { beforeAfterRouter } from './routes/beforeAfter.js';
 import { complexityRouter } from './routes/complexity.js';
+import { blameRouter } from './routes/blame.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -45,6 +46,7 @@ async function main() {
   app.use(aiCommentRouter);
   app.use(beforeAfterRouter);
   app.use(complexityRouter);
+  app.use(blameRouter);
 
   if (isDev) {
     const vite = await createViteServer({
