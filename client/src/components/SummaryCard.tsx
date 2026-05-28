@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useStore } from '../state/store.js';
+import { usePrefs } from '../state/preferences.js';
 import { ReviewEffort } from './ReviewEffort.js';
 
 interface BeforeAfter {
@@ -21,6 +22,7 @@ export function SummaryCard() {
   const bundle = useStore((s) => s.bundle);
   const headline = useStore((s) => s.headline);
   const beforeAfter = useStore((s) => s.beforeAfter);
+  const summaryHeight = usePrefs((s) => s.summaryHeight);
   const [collapsed, setCollapsed] = useState(false);
 
   if (!bundle) return null;
@@ -28,25 +30,24 @@ export function SummaryCard() {
   const ba = beforeAfter.status === 'done' ? parseBeforeAfter(beforeAfter.text) : null;
 
   return (
-    <section className="summary-card">
-      <div className="summary-head">
-        <span className="summary-tag">📌 SUMMARY</span>
-        <div className="summary-head-right">
-          <ReviewEffort />
+    <section className="summary-card" style={{ height: summaryHeight }}>
+      <div className="summary-card-grid">
+        <div className="summary-main">
+          <span className="summary-tag">📌 SUMMARY</span>
+          <div className="summary-body">
+            {headline.status === 'streaming' && (
+              <>
+                <span>{headline.text || 'Reading the diff…'}</span>
+                <span className="cursor" />
+              </>
+            )}
+            {headline.status === 'done' && <span>{headline.text}</span>}
+            {headline.status === 'error' && (
+              <span className="summary-error">Couldn't generate summary.</span>
+            )}
+          </div>
         </div>
-      </div>
-
-      <div className="summary-body">
-        {headline.status === 'streaming' && (
-          <>
-            <span>{headline.text || 'Reading the diff…'}</span>
-            <span className="cursor" />
-          </>
-        )}
-        {headline.status === 'done' && <span>{headline.text}</span>}
-        {headline.status === 'error' && (
-          <span className="summary-error">Couldn't generate summary.</span>
-        )}
+        <ReviewEffort />
       </div>
 
       {ba && (

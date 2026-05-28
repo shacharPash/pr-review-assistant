@@ -119,8 +119,8 @@ export function DiffViewer({ file, position }: Props) {
 
     commentEditor.updateOptions({
       lineNumbers: modifiedLineNumbers,
-      // Date(10) + "  " + author(12) + "  " + lineNum(4) = 30 chars.
-      lineNumbersMinChars: blameFn ? 32 : 4,
+      // Date(10) + " " + author(12) + " " + lineNum(4) = 28 chars exactly.
+      lineNumbersMinChars: blameFn ? 28 : 4,
     });
 
     if (otherEditor) {
@@ -292,13 +292,14 @@ function makeBlameLineNumbers(ranges: BlameRange[]): (n: number) => string {
   return (n: number) => {
     const r = ranges.find((x) => n >= x.startingLine && n <= x.endingLine);
     const lineNum = String(n).padStart(BLAME_LINENUM_WIDTH);
-    if (!r) return `${BLAME_EMPTY_DATE}  ${BLAME_EMPTY_AUTHOR}  ${lineNum}`;
+    if (!r) return `${BLAME_EMPTY_DATE} ${BLAME_EMPTY_AUTHOR} ${lineNum}`;
     const date = formatBlameDate(r.authoredDate); // 10 chars
     const who = padOrEllipsis(
       r.authorLogin || r.authorName || '?',
       BLAME_AUTHOR_WIDTH,
     );
-    return `${date}  ${who}  ${lineNum}`;
+    // Single space separator between columns — 10 + 1 + 12 + 1 + 4 = 28 chars total.
+    return `${date} ${who} ${lineNum}`;
   };
 }
 

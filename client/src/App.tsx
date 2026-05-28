@@ -5,6 +5,7 @@ import { PRInput } from './components/PRInput.js';
 import { PRView } from './components/PRView.js';
 import { HeaderControls } from './components/HeaderControls.js';
 import { SummaryCard } from './components/SummaryCard.js';
+import { SummaryResizer } from './components/SummaryResizer.js';
 import { JiraBadge } from './components/JiraBadge.js';
 import { ShortcutsHelp } from './components/ShortcutsHelp.js';
 import { AuthorChip } from './components/AuthorChip.js';
@@ -65,6 +66,7 @@ export function App() {
         <HeaderControls />
       </header>
       <SummaryCard />
+      {bundle && <SummaryResizer />}
       <PRView />
     </div>
   );

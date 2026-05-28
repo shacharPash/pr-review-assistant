@@ -37,7 +37,7 @@ loader.init().then((monaco) => {
     base: 'vs-dark',
     inherit: true,
     rules: [
-      { token: '', foreground: 'd4d4d4', background: '1e1e1e' },
+      { token: '', foreground: 'e6e6e6', background: '0e0e0e' },
       { token: 'comment', foreground: '6a9955', fontStyle: 'italic' },
       { token: 'comment.doc', foreground: '6a9955', fontStyle: 'italic' },
 
@@ -77,25 +77,27 @@ loader.init().then((monaco) => {
       { token: 'constant', foreground: '4fc1ff' },
     ],
     colors: {
-      'editor.background': '#1e1e1e',
-      'editor.foreground': '#d4d4d4',
-      'editorLineNumber.foreground': '#858585',
-      'editorLineNumber.activeForeground': '#c6c6c6',
+      // Background pulled darker than authentic VS Code (#1e1e1e) so the
+      // editor doesn't look "raised/foggy" next to the app's #0d1117 chrome.
+      'editor.background': '#0e0e0e',
+      'editor.foreground': '#e6e6e6',
+      'editorLineNumber.foreground': '#7a7a7a',
+      'editorLineNumber.activeForeground': '#e6e6e6',
       'editor.selectionBackground': '#264f78',
-      'editor.lineHighlightBackground': '#2a2d2e',
-      'editorCursor.foreground': '#aeafad',
-      'editorIndentGuide.background': '#404040',
-      'editorIndentGuide.activeBackground': '#707070',
-      'editorGutter.background': '#1e1e1e',
+      'editor.lineHighlightBackground': '#1a1a1a',
+      'editorCursor.foreground': '#cccccc',
+      'editorIndentGuide.background': '#2a2a2a',
+      'editorIndentGuide.activeBackground': '#5a5a5a',
+      'editorGutter.background': '#0e0e0e',
 
       'diffEditor.insertedLineBackground': '#9bb95530',
       'diffEditor.insertedTextBackground': '#9bb95550',
       'diffEditor.removedLineBackground': '#e54a4a30',
       'diffEditor.removedTextBackground': '#e54a4a50',
-      'diffEditor.diagonalFill': '#1e1e1e',
-      'diffEditor.border': '#3c3c3c',
-      'diffEditor.unchangedRegionBackground': '#252525',
-      'diffEditor.unchangedRegionForeground': '#858585',
+      'diffEditor.diagonalFill': '#0e0e0e',
+      'diffEditor.border': '#2c2c2c',
+      'diffEditor.unchangedRegionBackground': '#161616',
+      'diffEditor.unchangedRegionForeground': '#7a7a7a',
     },
   });
 
@@ -145,45 +147,41 @@ loader.init().then((monaco) => {
     base: 'vs-dark',
     inherit: true,
     rules: [
-      // Brighter foreground (#dadce0 vs old #bcbec4) for readability —
-      // the previous value was technically authentic but felt washed out
-      // against the darker editor background.
-      { token: '', foreground: 'dadce0', background: '1e1f22' },
+      // Bg pulled dark (#121316) so the editor matches the app chrome
+      // instead of feeling like a foggy raised panel. Tokens brightened
+      // for contrast.
+      { token: '', foreground: 'e8eaed', background: '121316' },
       { token: 'comment', foreground: '8a8e93', fontStyle: 'italic' },
-      { token: 'keyword', foreground: 'cf8e6d' },
-      { token: 'string', foreground: '7aba85' },
-      { token: 'number', foreground: '4fc3d4' },
-      { token: 'type', foreground: 'c8b76d' },
-      { token: 'identifier', foreground: 'dadce0' },
-      { token: 'delimiter', foreground: 'dadce0' },
-      { token: 'tag', foreground: 'e8bf6a' },
-      { token: 'attribute.name', foreground: 'cccccc' },
-      { token: 'attribute.value', foreground: '7aba85' },
+      { token: 'keyword', foreground: 'd99964' },
+      { token: 'string', foreground: '83c490' },
+      { token: 'number', foreground: '5dc8d8' },
+      { token: 'type', foreground: 'd5c378' },
+      { token: 'identifier', foreground: 'e8eaed' },
+      { token: 'delimiter', foreground: 'e8eaed' },
+      { token: 'tag', foreground: 'f0c876' },
+      { token: 'attribute.name', foreground: 'd4d4d4' },
+      { token: 'attribute.value', foreground: '83c490' },
     ],
     colors: {
-      'editor.background': '#1e1f22',
-      'editor.foreground': '#dadce0',
-      'editorLineNumber.foreground': '#5e6166',
-      'editorLineNumber.activeForeground': '#dadce0',
+      'editor.background': '#121316',
+      'editor.foreground': '#e8eaed',
+      'editorLineNumber.foreground': '#6a6e74',
+      'editorLineNumber.activeForeground': '#e8eaed',
       'editor.selectionBackground': '#2e436e',
-      'editor.lineHighlightBackground': '#26282e',
-      'editorCursor.foreground': '#cccccc',
-      'editorWhitespace.foreground': '#3b3b3b',
-      'editorIndentGuide.background': '#2b2d30',
-      'editorIndentGuide.activeBackground': '#43454a',
-      'editorGutter.background': '#1e1f22',
+      'editor.lineHighlightBackground': '#1c1e23',
+      'editorCursor.foreground': '#d4d4d4',
+      'editorWhitespace.foreground': '#2a2c30',
+      'editorIndentGuide.background': '#21232a',
+      'editorIndentGuide.activeBackground': '#3a3d44',
+      'editorGutter.background': '#121316',
 
-      // Diff backgrounds — very subtle so the code reads clearly
       'diffEditor.insertedLineBackground': '#2b4f3a30',
       'diffEditor.insertedTextBackground': '#3e7b4240',
       'diffEditor.removedLineBackground': '#5c2f2f30',
       'diffEditor.removedTextBackground': '#8b3a3a40',
-
-      // No diagonal stripes — flat editor bg where one side has no content
-      'diffEditor.diagonalFill': '#1e1f22',
-
-      'diffEditor.border': '#2b2d30',
-      'diffEditor.unchangedRegionBackground': '#26282e',
+      'diffEditor.diagonalFill': '#121316',
+      'diffEditor.border': '#21232a',
+      'diffEditor.unchangedRegionBackground': '#1c1e23',
       'diffEditor.unchangedRegionForeground': '#7a7e85',
 
       'editorOverviewRuler.modifiedForeground': '#57965caa',

@@ -54,7 +54,7 @@ button { font: inherit; }
 
 .app {
   display: grid;
-  grid-template-rows: 52px auto 1fr;
+  grid-template-rows: 52px auto auto 1fr;
   height: 100%;
 }
 .app > * { min-height: 0; }
@@ -386,8 +386,35 @@ button { font: inherit; }
     linear-gradient(135deg, var(--accent-soft) 0%, transparent 60%),
     var(--bg-elev);
   border-bottom: 1px solid var(--border);
-  padding: 14px 20px;
+  padding: 12px 20px 14px;
   position: relative;
+  overflow-y: auto;
+  /* Height is set inline via usePrefs.summaryHeight; the resizer handle
+   * below the card can shrink or grow it. */
+}
+
+/* Horizontal drag handle between Summary card and PRView (mirrors the
+ * other resizers visually). */
+.summary-resizer {
+  height: 6px;
+  cursor: row-resize;
+  background: var(--bg-elev);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background 0.15s;
+  user-select: none;
+}
+.summary-resizer:hover { background: var(--bg-card); }
+.summary-resizer:hover .summary-resizer-grip { background: var(--accent); }
+.summary-resizer-grip {
+  width: 36px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--border-strong);
+  transition: background 0.15s;
 }
 .summary-card::before {
   content: '';
@@ -396,6 +423,19 @@ button { font: inherit; }
   width: 3px;
   background: var(--accent);
 }
+
+/* New grid: text+tag take main flex column, pill anchored to top-right
+   corner. Body text wraps under the tag and to the LEFT of the pill —
+   pill no longer pushes body text into a third row. */
+.summary-card-grid {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 14px;
+  align-items: start;
+}
+.summary-main {
+  min-width: 0;
+}
 .summary-head {
   display: flex;
   align-items: center;
@@ -403,11 +443,13 @@ button { font: inherit; }
   margin-bottom: 6px;
 }
 .summary-tag {
+  display: inline-block;
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.08em;
   color: var(--accent);
   text-transform: uppercase;
+  margin-bottom: 4px;
 }
 .summary-collapse {
   background: transparent;
