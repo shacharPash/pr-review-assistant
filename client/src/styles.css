@@ -401,16 +401,16 @@ button { font: inherit; }
 
 /* ---------- Review effort pill ---------- */
 .effort-pill {
+  position: relative;
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
-  gap: 1px;
-  padding: 6px 12px;
+  align-items: stretch;
+  gap: 3px;
+  padding: 6px 10px 7px;
   border-radius: 8px;
   border: 1px solid var(--border);
   background: var(--bg-card);
-  cursor: help;
-  min-width: 140px;
+  min-width: 200px;
   font-feature-settings: "tnum" 1;
 }
 .effort-line1 {
@@ -422,12 +422,164 @@ button { font: inherit; }
   line-height: 1.2;
 }
 .effort-emoji { font-size: 15px; line-height: 1; }
+.effort-label { flex: 1; }
+
+.effort-info {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--bg-elev);
+  color: var(--fg-dim);
+  font-family: serif;
+  font-style: italic;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  line-height: 1;
+  flex-shrink: 0;
+  transition: color 0.1s, border-color 0.1s;
+}
+.effort-info:hover { color: var(--fg); border-color: var(--border-strong); }
+
+/* 4-segment intensity meter */
+.effort-meter {
+  display: flex;
+  gap: 3px;
+  margin: 1px 0;
+}
+.effort-dot {
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border);
+  transition: background 0.15s;
+}
+.effort-pill.effort-green   .effort-dot.filled { background: var(--added); }
+.effort-pill.effort-blue    .effort-dot.filled { background: var(--accent); }
+.effort-pill.effort-orange  .effort-dot.filled { background: var(--warn); }
+.effort-pill.effort-red     .effort-dot.filled { background: var(--removed); }
+.effort-pill.effort-neutral .effort-dot.filled { background: var(--fg-dim); }
+.effort-pill.effort-pending .effort-dot.filled { background: var(--fg-faint); }
+
 .effort-line2 {
   font-size: 10.5px;
   color: var(--fg-faint);
   letter-spacing: 0.02em;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
+}
+
+/* Help popover */
+.effort-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 99;
+}
+.effort-help {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 380px;
+  max-height: 70vh;
+  overflow-y: auto;
+  background: var(--bg-elev);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  padding: 14px 16px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  z-index: 100;
+  font-weight: normal;
+}
+.effort-help-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 10px;
+}
+.effort-help-section { margin-bottom: 12px; }
+.effort-help-section:last-of-type { margin-bottom: 8px; }
+.effort-help-section-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--fg-faint);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.effort-help-row {
+  display: grid;
+  grid-template-columns: 90px 1fr;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 12px;
+  color: var(--fg-dim);
+  align-items: baseline;
+}
+.effort-help-row strong { color: var(--fg); font-weight: 600; }
+.effort-help-row code {
+  font-family: var(--mono);
+  font-size: 11px;
+  background: var(--bg);
+  padding: 1px 5px;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  color: var(--fg-dim);
+}
+.effort-help-row.total {
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+  padding-top: 6px;
+}
+.effort-help-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+.effort-help-table td, .effort-help-table th {
+  padding: 3px 6px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  color: var(--fg-dim);
+}
+.effort-help-table th { font-weight: 600; color: var(--fg-faint); }
+.effort-help-table td:first-child { font-family: var(--mono); color: var(--fg); }
+.effort-help-table.grid {
+  text-align: center;
+}
+.effort-help-table.grid th,
+.effort-help-table.grid td {
+  text-align: center;
+  padding: 4px;
+  font-size: 13px;
+}
+.effort-help-table.grid th:first-child,
+.effort-help-table.grid tbody th {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--fg);
+  background: var(--bg-card);
+}
+.effort-help-legend {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 11px;
+  color: var(--fg-dim);
+}
+.effort-help-note {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  font-size: 10.5px;
+  color: var(--fg-faint);
+  font-style: italic;
 }
 
 /* Tones — each verdict gets its own dominant color on line 1 and a soft
