@@ -105,17 +105,50 @@ function MermaidRender({ source, theme, keyPrefix }: MermaidRenderProps) {
   useEffect(() => {
     if (!ref.current) return;
     initMermaid(theme);
-    const id = `mermaid-${keyPrefix}-${++renderCounter}`;
     setErr(null);
-    mermaid
-      .render(id, source)
-      .then(({ svg }) => {
-        if (ref.current) ref.current.innerHTML = svg;
-      })
-      .catch((e: Error) => {
-        setErr(e.message);
-        if (ref.current) ref.current.innerHTML = '';
-      });
+    let cancelled = false;
+    const id = `mermaid-${keyPrefix}-${++renderCounter}`;
+
+    // Mermaid v11's render() can succeed-but-return-a-bomb-SVG for invalid
+    // input AND leak temporary measuring divs into document.body. Parse
+    // first so we never call render() on bad input.
+    (async () => {
+      try {
+        await mermaid.parse(source);
+      } catch (e) {
+        if (!cancelled) {
+          setErr(e instanceof Error ? e.message : String(e));
+          if (ref.current) ref.current.innerHTML = '';
+        }
+        return;
+      }
+      try {
+        const { svg } = await mermaid.render(id, source);
+        if (cancelled || !ref.current) return;
+        // Defense in depth: if Mermaid still produced an error SVG, treat
+        // it as a failure rather than rendering a stack of bombs.
+        if (/syntax error/i.test(svg)) {
+          setErr('Mermaid could not render this diagram.');
+          ref.current.innerHTML = '';
+          return;
+        }
+        ref.current.innerHTML = svg;
+      } catch (e) {
+        if (!cancelled) {
+          setErr(e instanceof Error ? e.message : String(e));
+          if (ref.current) ref.current.innerHTML = '';
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      // Mermaid leaves a measuring container in document.body keyed by id;
+      // clean it up so failed renders don't stack visible bombs.
+      const orphan = document.getElementById(`d${id}`);
+      if (orphan) orphan.remove();
+      document.querySelectorAll(`#${id}`).forEach((el) => el.remove());
+    };
   }, [source, theme, keyPrefix]);
 
   if (err) return <pre className="diagram-fallback">{source}</pre>;
