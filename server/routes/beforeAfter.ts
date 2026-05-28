@@ -4,27 +4,31 @@ import { getBundle, getBeforeAfter, setBeforeAfter } from '../services/cache.js'
 
 export const beforeAfterRouter = Router();
 
-const BEFORE_AFTER_PROMPT = `Decide if a Before/After comparison would help a reviewer understand this
-pull request. It helps when the PR changes USER-VISIBLE behavior, a bug
-symptom, a workflow, a state machine, or any "what happens" of the system.
+const BEFORE_AFTER_PROMPT = `Produce a Before/After comparison for this pull request. Always output
+one — there is no "skip" option, even for trivial PRs.
 
-It does NOT help for: dependency bumps, pure refactors, formatting, docs.
+Output EXACTLY this format with NO preamble or extra prose:
 
-If a Before/After IS useful, output EXACTLY this format with NO preamble or
-extra prose:
+BEFORE: <one short sentence about what happens / what's true today>
+AFTER: <one short sentence about what happens / what's true after this PR ships>
 
-BEFORE: <one short sentence about what happens / what's wrong today>
-AFTER: <one short sentence about what happens after this PR ships>
+Pick a framing that fits the kind of change:
 
-Both sentences must be CONCRETE (cite the actual symptom / behavior, not
-"the code is improved"). Each ≤ 18 words. No code identifiers unless they
-are truly the killer detail. Use plain English.
+- BUG FIX     → BEFORE: the symptom. AFTER: the fixed behavior.
+- NEW FEATURE → BEFORE: what users can't do today. AFTER: what they can do now.
+- REFACTOR    → BEFORE: how it's implemented today. AFTER: how it's implemented now (same behavior).
+- DEP / TOOL  → BEFORE: prior version / config. AFTER: new version / config + the reason.
+- DOCS        → BEFORE: what was documented (or missing). AFTER: what's documented now.
+- TESTS-ONLY  → BEFORE: untested behavior X. AFTER: behavior X is now covered by tests.
 
-If a Before/After is NOT useful, output exactly:
+Rules:
+- Both sentences ≤ 18 words. Plain English.
+- Be CONCRETE: cite the actual thing that changed, never "the code is improved".
+- Use \`code\` formatting for any identifier you must name.
+- If the PR is genuinely tiny (typo, single import), the framing can be modest
+  (e.g. "BEFORE: typo in error message. AFTER: typo fixed.") but still produce both lines.
 
-NONE
-
-Output one or the other. Nothing else.`;
+Output the two lines. Nothing else.`;
 
 beforeAfterRouter.get('/api/before-after/stream', (req: Request, res: Response) => {
   const owner = String(req.query.owner ?? '');
