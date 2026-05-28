@@ -1,7 +1,7 @@
 import { DiffEditor, Editor } from '@monaco-editor/react';
 import type { editor as MonacoEditor } from 'monaco-editor';
-import { useEffect, useState } from 'react';
-import type { DiffFile } from '@shared/types';
+import { useEffect, useState, useMemo } from 'react';
+import type { DiffFile, BlameRange } from '@shared/types';
 import { fileContentFor, useStore } from '../state/store.js';
 import { monacoThemeFor, usePrefs } from '../state/preferences.js';
 import { InlineCommentsLayer } from './InlineCommentsLayer.js';
@@ -20,6 +20,7 @@ export function DiffViewer({ file, position }: Props) {
   const theme = usePrefs((s) => s.theme);
   const viewMode = usePrefs((s) => s.viewMode);
   const [commentEditor, setCommentEditor] = useState<MonacoEditor.ICodeEditor | null>(null);
+  const [blameVisible, setBlameVisible] = useState(false);
 
   // When the active file changes, dispose the inline composer.
   const closeComposer = useStore((s) => s.closeComposer);
@@ -46,6 +47,7 @@ export function DiffViewer({ file, position }: Props) {
   const monacoTheme = monacoThemeFor(theme);
 
   const noiseHunkCount = file.hunks.filter((h) => h.noise).length;
+  const blameReady = blameEntry?.status === 'ready' && blameEntry.ranges.length > 0;
   const canUseFull = noiseHunkCount === 0 || showNoise;
   const fullReady = fullEntry?.status === 'ready';
   const loadingFull = fullEntry?.status === 'loading';
@@ -59,39 +61,58 @@ export function DiffViewer({ file, position }: Props) {
   const oldContent = hasFull ? (fullEntry!.oldContent ?? '') : hunkOld;
   const newContent = hasFull ? (fullEntry!.newContent ?? '') : hunkNew;
 
-  const handleDiffMount = (
-    editor: MonacoEditor.IStandaloneDiffEditor,
-  ) => {
+  const [otherEditor, setOtherEditor] = useState<MonacoEditor.ICodeEditor | null>(null);
+
+  const handleDiffMount = (editor: MonacoEditor.IStandaloneDiffEditor) => {
     setCommentEditor(editor.getModifiedEditor());
-    // Apply real-line numbers when in hunks-only mode.
-    if (!hasFull) {
-      editor.getModifiedEditor().updateOptions({
-        lineNumbers: (n) => {
+    setOtherEditor(editor.getOriginalEditor());
+  };
+
+  const handleSingleMount = (editor: MonacoEditor.IStandaloneCodeEditor) => {
+    setCommentEditor(editor);
+    setOtherEditor(null);
+  };
+
+  // Effect-based line-numbers control: combines (hunks-only line map) +
+  // (optional blame annotation). Recomputes whenever any input changes.
+  useEffect(() => {
+    if (!commentEditor) return;
+    const blameFn = blameVisible && blameReady
+      ? makeBlameLineNumbers(blameEntry!.ranges)
+      : null;
+
+    const modifiedLineNumbers = blameFn
+      ? blameFn
+      : (n: number) => {
+          if (hasFull) return String(n);
           const real = newLineMap[n - 1];
           return real ? String(real) : '';
-        },
-      });
-      editor.getOriginalEditor().updateOptions({
-        lineNumbers: (n) => {
+        };
+
+    commentEditor.updateOptions({
+      lineNumbers: modifiedLineNumbers,
+      lineNumbersMinChars: blameFn ? 28 : 4,
+    });
+
+    if (otherEditor) {
+      otherEditor.updateOptions({
+        lineNumbers: (n: number) => {
+          if (hasFull) return String(n);
           const real = oldLineMap[n - 1];
           return real ? String(real) : '';
         },
       });
     }
-  };
-
-  const handleSingleMount = (editor: MonacoEditor.IStandaloneCodeEditor) => {
-    setCommentEditor(editor);
-    if (!hasFull) {
-      const map = isDeleted ? oldLineMap : newLineMap;
-      editor.updateOptions({
-        lineNumbers: (n) => {
-          const real = map[n - 1];
+    // Single-editor mode (added/deleted file)
+    if (!otherEditor && isDeleted && !hasFull) {
+      commentEditor.updateOptions({
+        lineNumbers: (n: number) => {
+          const real = oldLineMap[n - 1];
           return real ? String(real) : '';
         },
       });
     }
-  };
+  }, [commentEditor, otherEditor, blameVisible, blameReady, blameEntry, hasFull, newLineMap, oldLineMap, isDeleted]);
 
   return (
     <div className="diff-pane">
@@ -111,6 +132,21 @@ export function DiffViewer({ file, position }: Props) {
         </div>
         {loadingFull && <span className="context-status">loading full context…</span>}
         {hasFull && <span className="context-status ready" title="Full file loaded — expand context above/below changes">full file</span>}
+        {blameReady && (
+          <button
+            type="button"
+            className={`blame-toggle ${blameVisible ? 'on' : ''}`}
+            onClick={() => setBlameVisible((v) => !v)}
+            title={
+              blameVisible
+                ? 'Hide blame annotations'
+                : 'Show git blame: who last touched each line'
+            }
+          >
+            <span className="blame-toggle-icon">👤</span>
+            <span>{blameVisible ? 'Blame on' : 'Blame'}</span>
+          </button>
+        )}
         {noiseHunkCount > 0 && (
           <span className="noise-banner">
             {showNoise ? `${noiseHunkCount} noise hunk${noiseHunkCount > 1 ? 's' : ''} shown` : `${noiseHunkCount} noise hunk${noiseHunkCount > 1 ? 's' : ''} hidden`}{' '}
@@ -208,6 +244,35 @@ const editorOptions = {
   padding: { top: 12, bottom: 12 },
   // Right-click is enabled by default; the addAction above appears in that menu.
 };
+
+/**
+ * Builds a Monaco line-numbers function that prefixes the line number with
+ * `DD/MM/YY  AUTHOR` from blame data — IntelliJ-style gutter annotation.
+ *
+ * Monaco's `lineNumbers` callback only returns a string, so all three columns
+ * live in one space-padded line. The CSS targets `.monaco-editor.with-blame`
+ * to tighten the font for the wider gutter.
+ */
+function makeBlameLineNumbers(ranges: BlameRange[]): (n: number) => string {
+  // Build a flat lookup for fast line→range mapping. Most files have a
+  // modest number of ranges so this is fine without a tree.
+  return (n: number) => {
+    const r = ranges.find((x) => n >= x.startingLine && n <= x.endingLine);
+    if (!r) return String(n);
+    const date = formatShortDate(r.authoredDate);
+    const who = (r.authorLogin || r.authorName || '?').slice(0, 12).padEnd(12);
+    return `${date}  ${who}  ${n}`;
+  };
+}
+
+function formatShortDate(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '          ';
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const yy = String(d.getFullYear()).slice(-2);
+  return `${dd}/${mm}/${yy}`;
+}
 
 function languageFor(path: string): string {
   const ext = path.split('.').pop()?.toLowerCase();

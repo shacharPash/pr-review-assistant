@@ -26,7 +26,6 @@ export function SummaryCard() {
   if (!bundle) return null;
 
   const ba = beforeAfter.status === 'done' ? parseBeforeAfter(beforeAfter.text) : null;
-  const showBA = !!ba && !collapsed;
 
   return (
     <section className="summary-card">
@@ -34,16 +33,6 @@ export function SummaryCard() {
         <span className="summary-tag">📌 SUMMARY</span>
         <div className="summary-head-right">
           <ReviewEffort />
-          {ba && (
-            <button
-              type="button"
-              className="summary-collapse"
-              onClick={() => setCollapsed((c) => !c)}
-              title={collapsed ? 'Show before/after' : 'Hide before/after'}
-            >
-              {collapsed ? '▾ show before/after' : '▴ hide details'}
-            </button>
-          )}
         </div>
       </div>
 
@@ -60,23 +49,37 @@ export function SummaryCard() {
         )}
       </div>
 
-      {showBA && ba && (
-        <div className="summary-ba">
-          <div className="summary-ba-card before">
-            <div className="summary-ba-label">
-              <span className="summary-ba-icon">❌</span>
-              <span>Before</span>
+      {ba && (
+        <div className="summary-ba-wrap">
+          <button
+            type="button"
+            className="summary-ba-toggle"
+            onClick={() => setCollapsed((c) => !c)}
+            aria-expanded={!collapsed}
+            aria-controls="summary-ba-content"
+          >
+            <span className={`summary-ba-chev ${collapsed ? 'collapsed' : ''}`}>▾</span>
+            <span className="summary-ba-toggle-label">Before / After</span>
+          </button>
+          {!collapsed && (
+            <div id="summary-ba-content" className="summary-ba">
+              <div className="summary-ba-card before">
+                <div className="summary-ba-label">
+                  <span className="summary-ba-icon">❌</span>
+                  <span>Before</span>
+                </div>
+                <div className="summary-ba-text">{ba.before}</div>
+              </div>
+              <div className="summary-ba-arrow">→</div>
+              <div className="summary-ba-card after">
+                <div className="summary-ba-label">
+                  <span className="summary-ba-icon">✅</span>
+                  <span>After</span>
+                </div>
+                <div className="summary-ba-text">{ba.after}</div>
+              </div>
             </div>
-            <div className="summary-ba-text">{ba.before}</div>
-          </div>
-          <div className="summary-ba-arrow">→</div>
-          <div className="summary-ba-card after">
-            <div className="summary-ba-label">
-              <span className="summary-ba-icon">✅</span>
-              <span>After</span>
-            </div>
-            <div className="summary-ba-text">{ba.after}</div>
-          </div>
+          )}
         </div>
       )}
 

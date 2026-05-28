@@ -665,6 +665,36 @@ button { font: inherit; }
 }
 .summary-error { color: var(--removed); font-style: italic; font-weight: 400; }
 
+.summary-ba-wrap {
+  margin-top: 8px;
+}
+.summary-ba-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: none;
+  color: var(--fg-dim);
+  padding: 4px 0;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  transition: color 0.1s;
+}
+.summary-ba-toggle:hover { color: var(--fg); }
+.summary-ba-chev {
+  font-size: 12px;
+  color: var(--fg-faint);
+  transition: transform 0.15s;
+  display: inline-block;
+}
+.summary-ba-chev.collapsed { transform: rotate(-90deg); }
+.summary-ba-toggle-label {
+  letter-spacing: 0.06em;
+}
+
 .summary-ba {
   display: grid;
   grid-template-columns: 1fr auto 1fr;
@@ -2225,6 +2255,34 @@ button { font: inherit; }
   font-style: italic;
 }
 .diff-context .context-status.ready { color: var(--added); font-style: normal; }
+
+/* Blame toggle button — sits in the diff context bar */
+.blame-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  color: var(--fg-dim);
+  border-radius: 4px;
+  padding: 3px 9px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
+}
+.blame-toggle:hover { color: var(--fg); border-color: var(--border-strong); }
+.blame-toggle.on {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.blame-toggle-icon { font-size: 12px; }
+
+/* When blame is on, the line-number gutter holds DATE + AUTHOR + line —
+ * tighten the font so it fits without dominating the view. */
+.monaco-editor .line-numbers {
+  font-feature-settings: "tnum" 1;
+}
 
 .diff-monaco {
   flex: 1;
