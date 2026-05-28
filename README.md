@@ -4,6 +4,10 @@ A localhost web app that makes reviewing GitHub pull requests faster by streamin
 
 Runs entirely on your machine. Uses your local `gh` CLI for GitHub access and your local `claude` CLI for AI. Nothing is sent to a remote server beyond what those two tools already do.
 
+![PR Review Assistant — reviewing a public PR from cli/cli](docs/screenshot.png)
+
+*Above: reviewing [cli/cli#13509](https://github.com/cli/cli/pull/13509). The Summary card shows a one-sentence headline plus a Before / After comparison. The left rail has tabbed TL;DR + the reading-ordered file list. The right pane is a real Monaco side-by-side diff with full file context and `+` buttons for inline comments.*
+
 ---
 
 ## Why
