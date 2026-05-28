@@ -1546,9 +1546,35 @@ button { font: inherit; }
 
 .main {
   display: grid;
-  grid-template-columns: minmax(380px, 28%) 1fr;
+  /* grid-template-columns is set inline at runtime from usePrefs.railWidth.
+     Fallback for the brief first paint before React hydrates: */
+  grid-template-columns: 420px 6px 1fr;
   overflow: hidden;
   min-height: 0;
+}
+
+/* Vertical drag handle between left rail and diff column */
+.rail-resizer {
+  width: 6px;
+  cursor: col-resize;
+  background: var(--bg-elev);
+  border-left: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background 0.15s;
+  user-select: none;
+}
+.rail-resizer:hover { background: var(--bg-card); }
+.rail-resizer:hover .rail-resizer-grip { background: var(--accent); }
+.rail-resizer-grip {
+  width: 2px;
+  height: 36px;
+  border-radius: 2px;
+  background: var(--border-strong);
+  transition: background 0.15s;
 }
 
 /* ---------- Left rail: TL;DR + file list ---------- */
@@ -2282,6 +2308,33 @@ button { font: inherit; }
  * tighten the font so it fits without dominating the view. */
 .monaco-editor .line-numbers {
   font-feature-settings: "tnum" 1;
+}
+
+/* Blame age tint — IntelliJ-style.
+ *
+ * Newer commits read as warmer/green (your work, fresh); older commits
+ * read as duller/brown (stable, settled). Each class is applied via
+ * Monaco's `lineNumberClassName` on the relevant decoration. We use
+ * background-color with !important because Monaco's own line-number
+ * rules are more specific. The semi-transparent fills let the diff's
+ * own +/- color tint show through subtly. */
+.monaco-editor .line-numbers.blame-age-fresh {
+  background: rgba(63, 185, 80, 0.30) !important;
+}
+.monaco-editor .line-numbers.blame-age-recent {
+  background: rgba(63, 185, 80, 0.18) !important;
+}
+.monaco-editor .line-numbers.blame-age-moderate {
+  background: rgba(133, 110, 60, 0.22) !important;
+}
+.monaco-editor .line-numbers.blame-age-old {
+  background: rgba(170, 95, 80, 0.22) !important;
+}
+.monaco-editor .line-numbers.blame-age-ancient {
+  background: rgba(180, 70, 70, 0.28) !important;
+}
+.monaco-editor .line-numbers.blame-age-unknown {
+  background: rgba(110, 118, 129, 0.18) !important;
 }
 
 .diff-monaco {

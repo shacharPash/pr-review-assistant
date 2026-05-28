@@ -9,11 +9,19 @@ interface Preferences {
   tldrCollapsed: boolean;
   /** Height of the TLDR panel in pixels (within the left rail). */
   tldrHeight: number;
+  /** Width of the left rail in pixels. */
+  railWidth: number;
   setTheme: (t: Theme) => void;
   setViewMode: (m: ViewMode) => void;
   toggleTLDR: () => void;
   setTLDRHeight: (px: number) => void;
+  setRailWidth: (px: number) => void;
 }
+
+const RAIL_WIDTH_KEY = 'pra.railWidth';
+const RAIL_WIDTH_MIN = 280;
+const RAIL_WIDTH_MAX = 800;
+const RAIL_WIDTH_DEFAULT = 420;
 
 const TLDR_HEIGHT_KEY = 'pra.tldrHeight';
 const TLDR_HEIGHT_MIN = 100;
@@ -43,6 +51,13 @@ export const usePrefs = create<Preferences>((set, get) => ({
     if (!Number.isFinite(n)) return TLDR_HEIGHT_DEFAULT;
     return Math.max(TLDR_HEIGHT_MIN, Math.min(TLDR_HEIGHT_MAX, n));
   })(),
+  railWidth: (() => {
+    if (typeof window === 'undefined') return RAIL_WIDTH_DEFAULT;
+    const raw = window.localStorage.getItem(RAIL_WIDTH_KEY);
+    const n = raw ? Number(raw) : NaN;
+    if (!Number.isFinite(n)) return RAIL_WIDTH_DEFAULT;
+    return Math.max(RAIL_WIDTH_MIN, Math.min(RAIL_WIDTH_MAX, n));
+  })(),
 
   setTheme(t) {
     set({ theme: t });
@@ -70,6 +85,14 @@ export const usePrefs = create<Preferences>((set, get) => ({
     set({ tldrHeight: clamped });
     if (typeof window !== 'undefined') {
       window.localStorage.setItem(TLDR_HEIGHT_KEY, String(clamped));
+    }
+  },
+
+  setRailWidth(px) {
+    const clamped = Math.max(RAIL_WIDTH_MIN, Math.min(RAIL_WIDTH_MAX, Math.round(px)));
+    set({ railWidth: clamped });
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(RAIL_WIDTH_KEY, String(clamped));
     }
   },
 }));

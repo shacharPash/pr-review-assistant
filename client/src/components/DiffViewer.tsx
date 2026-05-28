@@ -1,6 +1,6 @@
 import { DiffEditor, Editor } from '@monaco-editor/react';
 import type { editor as MonacoEditor } from 'monaco-editor';
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { DiffFile, BlameRange } from '@shared/types';
 import { fileContentFor, useStore } from '../state/store.js';
 import { monacoThemeFor, usePrefs } from '../state/preferences.js';
@@ -72,6 +72,34 @@ export function DiffViewer({ file, position }: Props) {
     setCommentEditor(editor);
     setOtherEditor(null);
   };
+
+  // Decoration management for blame age colors. When blame mode is on we
+  // tint each line's gutter (via `lineNumberClassName`) by how old the line
+  // is. Decorations are cleared when blame is off.
+  const decorationsRef = useRef<string[]>([]);
+  useEffect(() => {
+    if (!commentEditor) return;
+    const m = (window as { monaco?: typeof import('monaco-editor') }).monaco;
+    if (!m) return;
+
+    if (!(blameVisible && blameReady) || !blameEntry) {
+      decorationsRef.current = commentEditor.deltaDecorations(decorationsRef.current, []);
+      return;
+    }
+    const decos = blameEntry.ranges.map((r) => ({
+      range: new m.Range(r.startingLine, 1, r.endingLine, 1),
+      options: {
+        lineNumberClassName: ageBucketClass(r.authoredDate),
+        isWholeLine: true,
+      },
+    }));
+    decorationsRef.current = commentEditor.deltaDecorations(decorationsRef.current, decos);
+    return () => {
+      if (commentEditor && !commentEditor.getModel()?.isDisposed?.()) {
+        decorationsRef.current = commentEditor.deltaDecorations(decorationsRef.current, []);
+      }
+    };
+  }, [commentEditor, blameVisible, blameReady, blameEntry]);
 
   // Effect-based line-numbers control: combines (hunks-only line map) +
   // (optional blame annotation). Recomputes whenever any input changes.
@@ -247,31 +275,45 @@ const editorOptions = {
 
 /**
  * Builds a Monaco line-numbers function that prefixes the line number with
- * `DD/MM/YY  AUTHOR` from blame data — IntelliJ-style gutter annotation.
+ * `DD/MM/YYYY  AUTHOR  N` from blame data — IntelliJ-style gutter annotation.
  *
- * Monaco's `lineNumbers` callback only returns a string, so all three columns
- * live in one space-padded line. The CSS targets `.monaco-editor.with-blame`
- * to tighten the font for the wider gutter.
+ * Fixed column widths (date 10ch, author 14ch, line number 4ch) keep the
+ * three "columns" aligned regardless of author name length.
  */
 function makeBlameLineNumbers(ranges: BlameRange[]): (n: number) => string {
-  // Build a flat lookup for fast line→range mapping. Most files have a
-  // modest number of ranges so this is fine without a tree.
   return (n: number) => {
     const r = ranges.find((x) => n >= x.startingLine && n <= x.endingLine);
-    if (!r) return String(n);
-    const date = formatShortDate(r.authoredDate);
-    const who = (r.authorLogin || r.authorName || '?').slice(0, 12).padEnd(12);
-    return `${date}  ${who}  ${n}`;
+    if (!r) return String(n).padStart(4);
+    const date = formatBlameDate(r.authoredDate); // 10 chars
+    const who = (r.authorLogin || r.authorName || '?').slice(0, 14).padEnd(14);
+    const lineNum = String(n).padStart(4);
+    return `${date}  ${who}  ${lineNum}`;
   };
 }
 
-function formatShortDate(iso: string): string {
+function formatBlameDate(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '          ';
   const dd = String(d.getDate()).padStart(2, '0');
   const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const yy = String(d.getFullYear()).slice(-2);
-  return `${dd}/${mm}/${yy}`;
+  const yyyy = String(d.getFullYear());
+  return `${dd}/${mm}/${yyyy}`;
+}
+
+/**
+ * Age buckets for blame coloring — IntelliJ-style gradient.
+ * Returns a CSS class name; the CSS rule on each class sets the
+ * background of the line-number gutter via `lineNumberClassName`.
+ */
+function ageBucketClass(iso: string): string {
+  const ts = new Date(iso).getTime();
+  if (Number.isNaN(ts)) return 'blame-age-unknown';
+  const days = (Date.now() - ts) / 86_400_000;
+  if (days < 30)    return 'blame-age-fresh';
+  if (days < 180)   return 'blame-age-recent';
+  if (days < 365)   return 'blame-age-moderate';
+  if (days < 365 * 3) return 'blame-age-old';
+  return 'blame-age-ancient';
 }
 
 function languageFor(path: string): string {

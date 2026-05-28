@@ -5,6 +5,7 @@ import { FileSidebar } from './FileSidebar.js';
 import { DiffViewer } from './DiffViewer.js';
 import { TLDRPanel } from './TLDRPanel.js';
 import { TLDRResizer } from './TLDRResizer.js';
+import { RailResizer } from './RailResizer.js';
 import { ReviewFooter } from './ReviewFooter.js';
 
 export function PRView() {
@@ -14,6 +15,7 @@ export function PRView() {
   const showNoise = useStore((s) => s.showNoise);
   const tldrHeight = usePrefs((s) => s.tldrHeight);
   const tldrCollapsed = usePrefs((s) => s.tldrCollapsed);
+  const railWidth = usePrefs((s) => s.railWidth);
 
   const { activeFile, position } = useMemo(() => {
     if (!bundle) return { activeFile: null, position: null };
@@ -50,7 +52,7 @@ export function PRView() {
   }
 
   return (
-    <div className="main">
+    <div className="main" style={{ gridTemplateColumns: `${railWidth}px 6px 1fr` }}>
       <aside className="left-rail">
         <div
           className="tldr-slot"
@@ -62,6 +64,7 @@ export function PRView() {
         <FileSidebar />
         <ReviewFooter />
       </aside>
+      <RailResizer />
       <div className="diff-column">
         <DiffViewer file={activeFile} position={position} />
       </div>
