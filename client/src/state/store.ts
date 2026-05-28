@@ -27,6 +27,7 @@ interface State {
   headline: TLDR;
   diagram: TLDR;
   beforeAfter: TLDR;
+  complexity: TLDR;
   fullContent: Record<string, FullFileContent>;
   activeTab: TLDRTab;
   personaResults: Partial<Record<PersonaId, TLDR>>;
@@ -65,6 +66,7 @@ let tldrEventSource: EventSource | null = null;
 let headlineEventSource: EventSource | null = null;
 let diagramEventSource: EventSource | null = null;
 let beforeAfterEventSource: EventSource | null = null;
+let complexityEventSource: EventSource | null = null;
 const personaEventSources = new Map<PersonaId, EventSource>();
 
 function reviewedStorageKey(headSha: string): string {
@@ -92,6 +94,39 @@ function writeJSON(key: string, value: unknown): void {
   } catch {
     /* quota — ignore */
   }
+}
+
+function openComplexityStream(bundle: PRBundle, set: (partial: Partial<State>) => void) {
+  if (complexityEventSource) {
+    complexityEventSource.close();
+    complexityEventSource = null;
+  }
+  const url = `/api/complexity/stream?owner=${encodeURIComponent(bundle.meta.owner)}` +
+    `&repo=${encodeURIComponent(bundle.meta.repo)}` +
+    `&number=${bundle.meta.number}` +
+    `&headSha=${bundle.meta.headSha}`;
+  const es = new EventSource(url);
+  complexityEventSource = es;
+  set({ complexity: { text: '', status: 'streaming' } });
+  let acc = '';
+  const decode = (raw: string): string => {
+    try { return JSON.parse(raw) as string; } catch { return raw; }
+  };
+  es.addEventListener('chunk', (e: MessageEvent) => {
+    acc += decode(e.data);
+    set({ complexity: { text: acc, status: 'streaming' } });
+  });
+  es.addEventListener('done', () => {
+    set({ complexity: { text: acc.trim().toLowerCase(), status: 'done' } });
+    es.close();
+    complexityEventSource = null;
+  });
+  es.addEventListener('error', (e: MessageEvent) => {
+    const msg = e?.data ? decode(e.data) : 'Complexity classification failed.';
+    set({ complexity: { text: acc, status: 'error', error: msg } });
+    es.close();
+    complexityEventSource = null;
+  });
 }
 
 function openBeforeAfterStream(bundle: PRBundle, set: (partial: Partial<State>) => void) {
@@ -242,6 +277,7 @@ export const useStore = create<State>((set, get) => ({
   headline: emptyTLDR,
   diagram: emptyTLDR,
   beforeAfter: emptyTLDR,
+  complexity: emptyTLDR,
   fullContent: {},
   reviewed: {},
   comments: {},
@@ -258,6 +294,7 @@ export const useStore = create<State>((set, get) => ({
       headline: emptyTLDR,
       diagram: emptyTLDR,
       beforeAfter: emptyTLDR,
+      complexity: emptyTLDR,
       fullContent: {},
       reviewed: {},
       comments: {},
@@ -293,6 +330,7 @@ export const useStore = create<State>((set, get) => ({
       openHeadlineStream(bundle, set);
       openDiagramStream(bundle, set);
       openBeforeAfterStream(bundle, set);
+      openComplexityStream(bundle, set);
       if (firstVisible) get().fetchFullContent(firstVisible.path);
     } catch (err) {
       set({ loading: false, error: { message: (err as Error).message } });

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useStore } from '../state/store.js';
+import { ReviewEffort } from './ReviewEffort.js';
 
 interface BeforeAfter {
   before: string;
@@ -31,16 +32,19 @@ export function SummaryCard() {
     <section className="summary-card">
       <div className="summary-head">
         <span className="summary-tag">📌 SUMMARY</span>
-        {ba && (
-          <button
-            type="button"
-            className="summary-collapse"
-            onClick={() => setCollapsed((c) => !c)}
-            title={collapsed ? 'Show before/after' : 'Hide before/after'}
-          >
-            {collapsed ? '▾ show before/after' : '▴ hide details'}
-          </button>
-        )}
+        <div className="summary-head-right">
+          <ReviewEffort />
+          {ba && (
+            <button
+              type="button"
+              className="summary-collapse"
+              onClick={() => setCollapsed((c) => !c)}
+              title={collapsed ? 'Show before/after' : 'Hide before/after'}
+            >
+              {collapsed ? '▾ show before/after' : '▴ hide details'}
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="summary-body">
