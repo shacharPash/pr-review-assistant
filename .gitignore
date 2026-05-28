@@ -1,0 +1,16 @@
+node_modules
+dist
+.tsbuildinfo
+*.tsbuildinfo
+.DS_Store
+.env
+.env.local
+.vite
+
+# Local dev artifacts — contain screenshots of internal PRs
+.tmp-screenshots/
+/tmp/
+
+# Logs
+*.log
+npm-debug.log*

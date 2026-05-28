@@ -1,0 +1,70 @@
+import { useMemo } from 'react';
+import { useStore } from '../state/store.js';
+import { usePrefs } from '../state/preferences.js';
+import { FileSidebar } from './FileSidebar.js';
+import { DiffViewer } from './DiffViewer.js';
+import { TLDRPanel } from './TLDRPanel.js';
+import { TLDRResizer } from './TLDRResizer.js';
+import { ReviewFooter } from './ReviewFooter.js';
+
+export function PRView() {
+  const bundle = useStore((s) => s.bundle);
+  const error = useStore((s) => s.error);
+  const activePath = useStore((s) => s.activeFilePath);
+  const showNoise = useStore((s) => s.showNoise);
+  const tldrHeight = usePrefs((s) => s.tldrHeight);
+  const tldrCollapsed = usePrefs((s) => s.tldrCollapsed);
+
+  const { activeFile, position } = useMemo(() => {
+    if (!bundle) return { activeFile: null, position: null };
+    const visible = bundle.files.filter((f) => showNoise || !f.noise);
+    const idx = visible.findIndex((f) => f.path === activePath);
+    if (idx < 0) return { activeFile: null, position: null };
+    return {
+      activeFile: visible[idx],
+      position: { index: idx, total: visible.length },
+    };
+  }, [bundle, activePath, showNoise]);
+
+  if (error) {
+    return (
+      <div className="error-card">
+        <div className="title">{error.message}</div>
+        {error.detail && <div className="detail">{error.detail}</div>}
+      </div>
+    );
+  }
+
+  if (!bundle) {
+    return (
+      <div className="empty-state">
+        <div className="empty-inner">
+          <h2>Open a pull request</h2>
+          <p>Paste a GitHub PR URL above. The TL;DR streams while you wait — risk and blast radius first, code second.</p>
+          <div className="hint">
+            Requires <strong>gh</strong> CLI authenticated, plus <strong>claude</strong> for the AI summary.
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="main">
+      <aside className="left-rail">
+        <div
+          className="tldr-slot"
+          style={tldrCollapsed ? undefined : { height: tldrHeight }}
+        >
+          <TLDRPanel />
+        </div>
+        <TLDRResizer />
+        <FileSidebar />
+        <ReviewFooter />
+      </aside>
+      <div className="diff-column">
+        <DiffViewer file={activeFile} position={position} />
+      </div>
+    </div>
+  );
+}
