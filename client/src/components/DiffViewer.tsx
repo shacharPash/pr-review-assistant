@@ -5,6 +5,7 @@ import type { DiffFile } from '@shared/types';
 import { fileContentFor, useStore } from '../state/store.js';
 import { monacoThemeFor, usePrefs } from '../state/preferences.js';
 import { InlineCommentsLayer } from './InlineCommentsLayer.js';
+import { BlameHoverProvider } from './BlameHoverProvider.js';
 
 interface Props {
   file: DiffFile | null;
@@ -15,6 +16,7 @@ export function DiffViewer({ file, position }: Props) {
   const showNoise = useStore((s) => s.showNoise);
   const toggleNoise = useStore((s) => s.toggleNoise);
   const fullEntry = useStore((s) => (file ? s.fullContent[file.path] : undefined));
+  const blameEntry = useStore((s) => (file ? s.blame[file.path] : undefined));
   const theme = usePrefs((s) => s.theme);
   const viewMode = usePrefs((s) => s.viewMode);
   const [commentEditor, setCommentEditor] = useState<MonacoEditor.ICodeEditor | null>(null);
@@ -185,6 +187,10 @@ export function DiffViewer({ file, position }: Props) {
         </div>
       )}
       <InlineCommentsLayer editor={commentEditor} filePath={file.path} />
+      <BlameHoverProvider
+        editor={commentEditor}
+        ranges={hasFull && blameEntry?.status === 'ready' ? blameEntry.ranges : null}
+      />
     </div>
   );
 }

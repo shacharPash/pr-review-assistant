@@ -1,11 +1,17 @@
 import { create } from 'zustand';
-import type { PRBundle, DiffFile, TLDR } from '@shared/types';
+import type { PRBundle, DiffFile, TLDR, BlameRange } from '@shared/types';
 import type { PersonaId } from '@shared/personas';
 
 export interface FullFileContent {
   status: 'loading' | 'ready' | 'error';
   oldContent: string | null;
   newContent: string | null;
+  error?: string;
+}
+
+export interface BlameEntry {
+  status: 'loading' | 'ready' | 'error';
+  ranges: BlameRange[];
   error?: string;
 }
 
@@ -29,6 +35,7 @@ interface State {
   beforeAfter: TLDR;
   complexity: TLDR;
   fullContent: Record<string, FullFileContent>;
+  blame: Record<string, BlameEntry>;
   activeTab: TLDRTab;
   personaResults: Partial<Record<PersonaId, TLDR>>;
   reviewed: Record<string, boolean>;
@@ -48,6 +55,7 @@ interface State {
   startTLDR: () => void;
   retryTLDR: () => void;
   fetchFullContent: (path: string) => Promise<void>;
+  fetchBlame: (path: string) => Promise<void>;
   selectTab: (tab: TLDRTab) => void;
   retryPersona: (id: PersonaId) => void;
   toggleReviewed: (path: string) => void;
@@ -279,6 +287,7 @@ export const useStore = create<State>((set, get) => ({
   beforeAfter: emptyTLDR,
   complexity: emptyTLDR,
   fullContent: {},
+  blame: {},
   reviewed: {},
   comments: {},
   lineComments: {},
@@ -296,6 +305,7 @@ export const useStore = create<State>((set, get) => ({
       beforeAfter: emptyTLDR,
       complexity: emptyTLDR,
       fullContent: {},
+      blame: {},
       reviewed: {},
       comments: {},
       postingReview: { status: 'idle' },
@@ -331,7 +341,10 @@ export const useStore = create<State>((set, get) => ({
       openDiagramStream(bundle, set);
       openBeforeAfterStream(bundle, set);
       openComplexityStream(bundle, set);
-      if (firstVisible) get().fetchFullContent(firstVisible.path);
+      if (firstVisible) {
+        get().fetchFullContent(firstVisible.path);
+        get().fetchBlame(firstVisible.path);
+      }
     } catch (err) {
       set({ loading: false, error: { message: (err as Error).message } });
     }
@@ -340,6 +353,30 @@ export const useStore = create<State>((set, get) => ({
   selectFile(path) {
     set({ activeFilePath: path });
     if (!get().fullContent[path]) get().fetchFullContent(path);
+    if (!get().blame[path]) get().fetchBlame(path);
+  },
+
+  async fetchBlame(path) {
+    const { bundle, blame } = get();
+    if (!bundle) return;
+    if (blame[path]?.status === 'ready' || blame[path]?.status === 'loading') return;
+    set({ blame: { ...get().blame, [path]: { status: 'loading', ranges: [] } } });
+    try {
+      const url = `/api/blame?owner=${encodeURIComponent(bundle.meta.owner)}` +
+        `&repo=${encodeURIComponent(bundle.meta.repo)}` +
+        `&number=${bundle.meta.number}` +
+        `&headSha=${bundle.meta.headSha}` +
+        `&path=${encodeURIComponent(path)}`;
+      const res = await fetch(url);
+      const data = await res.json();
+      if (!res.ok) {
+        set({ blame: { ...get().blame, [path]: { status: 'error', ranges: [], error: data.error } } });
+        return;
+      }
+      set({ blame: { ...get().blame, [path]: { status: 'ready', ranges: data.ranges ?? [] } } });
+    } catch (err) {
+      set({ blame: { ...get().blame, [path]: { status: 'error', ranges: [], error: (err as Error).message } } });
+    }
   },
 
   async fetchFullContent(path) {

@@ -7,6 +7,7 @@ import { HeaderControls } from './components/HeaderControls.js';
 import { SummaryCard } from './components/SummaryCard.js';
 import { JiraBadge } from './components/JiraBadge.js';
 import { ShortcutsHelp } from './components/ShortcutsHelp.js';
+import { AuthorChip } from './components/AuthorChip.js';
 
 export function App() {
   const bundle = useStore((s) => s.bundle);
@@ -56,6 +57,7 @@ export function App() {
             <a href={bundle.meta.url} target="_blank" rel="noreferrer">
               {bundle.meta.title}
             </a>
+            <AuthorChip />
             <ShortcutsHelp />
             <JiraBadge />
           </div>

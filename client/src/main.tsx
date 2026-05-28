@@ -22,6 +22,9 @@ document.body.dataset.theme = usePrefs.getState().theme;
 // variables look identical (both come out as "identifier") and VS Code
 // Dark+ loses its signature yellow method color.
 loader.init().then((monaco) => {
+  // Expose monaco globally for components that need to register providers
+  // (e.g. hover providers for git blame).
+  (window as unknown as { monaco?: unknown }).monaco = monaco;
   patchJavaTokenizer(monaco);
 
 
