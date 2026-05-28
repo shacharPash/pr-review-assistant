@@ -119,7 +119,8 @@ export function DiffViewer({ file, position }: Props) {
 
     commentEditor.updateOptions({
       lineNumbers: modifiedLineNumbers,
-      lineNumbersMinChars: blameFn ? 28 : 4,
+      // Date(10) + "  " + author(12) + "  " + lineNum(4) = 30 chars.
+      lineNumbersMinChars: blameFn ? 32 : 4,
     });
 
     if (otherEditor) {
@@ -277,18 +278,34 @@ const editorOptions = {
  * Builds a Monaco line-numbers function that prefixes the line number with
  * `DD/MM/YYYY  AUTHOR  N` from blame data — IntelliJ-style gutter annotation.
  *
- * Fixed column widths (date 10ch, author 14ch, line number 4ch) keep the
- * three "columns" aligned regardless of author name length.
+ * Fixed column widths (date 10ch, author 12ch, line number 4ch) keep the
+ * three "columns" aligned. Long handles get ellipsised to 11ch + "…".
+ * Lines without a matching blame range still get padded so the gutter stays
+ * the same width and Monaco doesn't truncate.
  */
+const BLAME_AUTHOR_WIDTH = 12;
+const BLAME_LINENUM_WIDTH = 4;
+const BLAME_EMPTY_DATE = ' '.repeat(10);
+const BLAME_EMPTY_AUTHOR = ' '.repeat(BLAME_AUTHOR_WIDTH);
+
 function makeBlameLineNumbers(ranges: BlameRange[]): (n: number) => string {
   return (n: number) => {
     const r = ranges.find((x) => n >= x.startingLine && n <= x.endingLine);
-    if (!r) return String(n).padStart(4);
+    const lineNum = String(n).padStart(BLAME_LINENUM_WIDTH);
+    if (!r) return `${BLAME_EMPTY_DATE}  ${BLAME_EMPTY_AUTHOR}  ${lineNum}`;
     const date = formatBlameDate(r.authoredDate); // 10 chars
-    const who = (r.authorLogin || r.authorName || '?').slice(0, 14).padEnd(14);
-    const lineNum = String(n).padStart(4);
+    const who = padOrEllipsis(
+      r.authorLogin || r.authorName || '?',
+      BLAME_AUTHOR_WIDTH,
+    );
     return `${date}  ${who}  ${lineNum}`;
   };
+}
+
+function padOrEllipsis(text: string, width: number): string {
+  if (text.length === width) return text;
+  if (text.length < width) return text.padEnd(width);
+  return text.slice(0, width - 1) + '…';
 }
 
 function formatBlameDate(iso: string): string {

@@ -52,6 +52,18 @@ export function ReviewEffort() {
       <div className="effort-line1">
         <span className="effort-emoji">{verdict.emoji}</span>
         <span className="effort-label">{verdict.label}</span>
+        <span className="effort-meter" aria-label={
+          verdict.level ? `Level ${verdict.level} of 4` : 'Off scale'
+        }>
+          {[1, 2, 3, 4].map((n) => (
+            <span
+              key={n}
+              className={`effort-dot ${
+                verdict.level !== null && n <= verdict.level ? 'filled' : ''
+              }`}
+            />
+          ))}
+        </span>
         <button
           type="button"
           className="effort-info"
@@ -61,18 +73,6 @@ export function ReviewEffort() {
         >
           i
         </button>
-      </div>
-      <div className="effort-meter" aria-label={
-        verdict.level ? `Level ${verdict.level} of 4` : 'Off scale'
-      }>
-        {[1, 2, 3, 4].map((n) => (
-          <span
-            key={n}
-            className={`effort-dot ${
-              verdict.level !== null && n <= verdict.level ? 'filled' : ''
-            }`}
-          />
-        ))}
       </div>
       <div className="effort-line2">
         {verdict.key === 'pending'
