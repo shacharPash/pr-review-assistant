@@ -60,6 +60,30 @@ export function DiagramPanel() {
   const diagram = useStore((s) => s.diagram);
   const theme = usePrefs((s) => s.theme);
   const [expanded, setExpanded] = useState(false);
+  const [validated, setValidated] = useState<'pending' | 'ok' | 'invalid'>('pending');
+
+  const source = diagram.status === 'done' ? extractMermaid(diagram.text) : null;
+
+  // Validate Mermaid source up-front. If parse fails, we hide the panel
+  // entirely instead of showing a useless "View diagram" button or a
+  // broken render. Diagrams are a bonus, not a critical surface.
+  useEffect(() => {
+    if (!source) {
+      setValidated('invalid');
+      return;
+    }
+    let cancelled = false;
+    initMermaid(theme);
+    (async () => {
+      try {
+        await mermaid.parse(source);
+        if (!cancelled) setValidated('ok');
+      } catch {
+        if (!cancelled) setValidated('invalid');
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [source, theme]);
 
   if (diagram.status === 'idle') return null;
   if (diagram.status === 'streaming') {
@@ -69,9 +93,11 @@ export function DiagramPanel() {
       </div>
     );
   }
+  // Skip silently on error, NONE, or unparseable Mermaid.
   if (diagram.status === 'error') return null;
-  const source = extractMermaid(diagram.text);
   if (!source) return null;
+  if (validated === 'invalid') return null;
+  if (validated === 'pending') return null;
 
   return (
     <>
@@ -86,7 +112,7 @@ export function DiagramPanel() {
         <span className="diagram-button-arrow">↗</span>
       </button>
       {expanded && (
-        <DiagramModal source={source} theme={theme} onClose={() => setExpanded(false)} />
+        <DiagramModal source={source!} theme={theme} onClose={() => setExpanded(false)} />
       )}
     </>
   );
@@ -151,7 +177,14 @@ function MermaidRender({ source, theme, keyPrefix }: MermaidRenderProps) {
     };
   }, [source, theme, keyPrefix]);
 
-  if (err) return <pre className="diagram-fallback">{source}</pre>;
+  if (err) {
+    return (
+      <div className="diagram-unavailable">
+        Couldn't render the diagram. Try clicking <strong>retry</strong> on
+        the brief, or skip the diagram — the rest of the review still works.
+      </div>
+    );
+  }
   return <div className="mermaid-container" ref={ref} />;
 }
 

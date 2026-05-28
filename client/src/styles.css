@@ -393,6 +393,83 @@ button { font: inherit; }
 }
 .summary-collapse:hover { background: var(--bg-card); color: var(--fg); }
 
+.summary-head-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* ---------- Review effort pill ---------- */
+.effort-pill {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  cursor: help;
+  min-width: 140px;
+  font-feature-settings: "tnum" 1;
+}
+.effort-line1 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+.effort-emoji { font-size: 15px; line-height: 1; }
+.effort-line2 {
+  font-size: 10.5px;
+  color: var(--fg-faint);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Tones — each verdict gets its own dominant color on line 1 and a soft
+   tinted background on the pill, so peripheral vision sees green/blue/
+   orange/red regardless of whether the user reads the label. */
+.effort-pill.effort-green {
+  background: var(--added-soft);
+  border-color: var(--added);
+}
+.effort-pill.effort-green .effort-line1 { color: var(--added); }
+
+.effort-pill.effort-blue {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+.effort-pill.effort-blue .effort-line1 { color: var(--accent); }
+
+.effort-pill.effort-orange {
+  background: var(--warn-soft);
+  border-color: var(--warn);
+}
+.effort-pill.effort-orange .effort-line1 { color: var(--warn); }
+
+.effort-pill.effort-red {
+  background: var(--removed-soft);
+  border-color: var(--removed);
+}
+.effort-pill.effort-red .effort-line1 { color: var(--removed); }
+
+.effort-pill.effort-neutral {
+  background: var(--bg-card);
+  border-color: var(--border-strong);
+}
+.effort-pill.effort-neutral .effort-line1 { color: var(--fg-dim); }
+
+.effort-pill.effort-pending {
+  background: var(--bg-card);
+  border-color: var(--border);
+  opacity: 0.7;
+}
+.effort-pill.effort-pending .effort-line1 { color: var(--fg-dim); }
+
 .summary-body {
   color: var(--fg);
   font-size: 15px;

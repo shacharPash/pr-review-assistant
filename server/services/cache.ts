@@ -6,6 +6,7 @@ interface Entry {
   headline?: string;
   diagram?: string; // mermaid source, or "NONE"
   beforeAfter?: string; // structured "BEFORE: ... AFTER: ..." or "NONE"
+  complexity?: string; // one of: simple, moderate, complex, unknown
   explanations?: Record<string, string>;
   storedAt: number;
 }
@@ -96,6 +97,21 @@ export function setDiagram(
   const existing = store.get(k);
   if (!existing) return;
   store.set(k, { ...existing, diagram: text });
+}
+
+export function getComplexity(
+  owner: string, repo: string, number: number, headSha: string,
+): string | undefined {
+  return store.get(key(owner, repo, number, headSha))?.complexity;
+}
+
+export function setComplexity(
+  owner: string, repo: string, number: number, headSha: string, text: string,
+): void {
+  const k = key(owner, repo, number, headSha);
+  const existing = store.get(k);
+  if (!existing) return;
+  store.set(k, { ...existing, complexity: text });
 }
 
 export function getBeforeAfter(
