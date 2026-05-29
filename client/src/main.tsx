@@ -81,8 +81,8 @@ loader.init().then((monaco) => {
       // editor doesn't look "raised/foggy" next to the app's #0d1117 chrome.
       'editor.background': '#0e0e0e',
       'editor.foreground': '#e6e6e6',
-      'editorLineNumber.foreground': '#7a7a7a',
-      'editorLineNumber.activeForeground': '#e6e6e6',
+      'editorLineNumber.foreground': '#a5a5a5',
+      'editorLineNumber.activeForeground': '#ffffff',
       'editor.selectionBackground': '#264f78',
       'editor.lineHighlightBackground': '#1a1a1a',
       'editorCursor.foreground': '#cccccc',
@@ -102,12 +102,13 @@ loader.init().then((monaco) => {
   });
 
 
-  // GitHub Dark — colors match github.com's dark theme
+  // GitHub Dark — colors match github.com's dark theme palette but with
+  // the bg pulled to near-black so it matches the darkened app chrome.
   monaco.editor.defineTheme('github-dark-custom', {
     base: 'vs-dark',
     inherit: true,
     rules: [
-      { token: '', foreground: 'c9d1d9', background: '0d1117' },
+      { token: '', foreground: 'c9d1d9', background: '07090c' },
       { token: 'comment', foreground: '8b949e', fontStyle: 'italic' },
       { token: 'keyword', foreground: 'ff7b72' },
       { token: 'string', foreground: 'a5d6ff' },
@@ -121,23 +122,25 @@ loader.init().then((monaco) => {
       { token: 'function', foreground: 'd2a8ff' },
     ],
     colors: {
-      'editor.background': '#0d1117',
+      'editor.background': '#07090c',
       'editor.foreground': '#c9d1d9',
-      'editorLineNumber.foreground': '#484f58',
-      'editorLineNumber.activeForeground': '#c9d1d9',
+      // Brighter line number color so blame info (rendered as line
+      // numbers) is readable. Was #484f58, too dim against near-black bg.
+      'editorLineNumber.foreground': '#9aa2ad',
+      'editorLineNumber.activeForeground': '#e6edf3',
       'editor.selectionBackground': '#264f78',
-      'editor.lineHighlightBackground': '#161b22',
+      'editor.lineHighlightBackground': '#11141a',
       'editorCursor.foreground': '#c9d1d9',
-      'editorIndentGuide.background': '#21262d',
-      'editorGutter.background': '#0d1117',
+      'editorIndentGuide.background': '#1a1f26',
+      'editorGutter.background': '#07090c',
 
       'diffEditor.insertedLineBackground': '#3fb95025',
       'diffEditor.insertedTextBackground': '#3fb95040',
       'diffEditor.removedLineBackground': '#f8514925',
       'diffEditor.removedTextBackground': '#f8514940',
-      'diffEditor.diagonalFill': '#0d1117',
-      'diffEditor.border': '#30363d',
-      'diffEditor.unchangedRegionBackground': '#161b22',
+      'diffEditor.diagonalFill': '#07090c',
+      'diffEditor.border': '#2a3038',
+      'diffEditor.unchangedRegionBackground': '#11141a',
       'diffEditor.unchangedRegionForeground': '#6e7681',
     },
   });
@@ -165,8 +168,8 @@ loader.init().then((monaco) => {
     colors: {
       'editor.background': '#121316',
       'editor.foreground': '#e8eaed',
-      'editorLineNumber.foreground': '#6a6e74',
-      'editorLineNumber.activeForeground': '#e8eaed',
+      'editorLineNumber.foreground': '#a8acb3',
+      'editorLineNumber.activeForeground': '#ffffff',
       'editor.selectionBackground': '#2e436e',
       'editor.lineHighlightBackground': '#1c1e23',
       'editorCursor.foreground': '#d4d4d4',
