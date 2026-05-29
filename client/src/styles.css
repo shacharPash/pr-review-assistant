@@ -6,14 +6,18 @@
 /* ---------- App chrome palette (single, consistent) ----------
  * The "GitHub" / "IntelliJ" toggle in the header only changes how CODE is
  * rendered inside Monaco. The surrounding UI stays one palette so the app
- * doesn't feel like it shifts theme entirely. */
+ * doesn't feel like it shifts theme entirely.
+ *
+ * Bg is pulled near-black (was #0d1117, GitHub's canonical dark) so the
+ * whole UI feels darker / less foggy. Surface levels keep proportional
+ * lift to maintain visual hierarchy. */
 body {
-  --bg: #0d1117;
-  --bg-elev: #161b22;
-  --bg-card: #1c2128;
-  --bg-card-hover: #22272e;
-  --border: #30363d;
-  --border-strong: #484f58;
+  --bg: #07090c;
+  --bg-elev: #11141a;
+  --bg-card: #181c23;
+  --bg-card-hover: #1e232b;
+  --border: #2a3038;
+  --border-strong: #404853;
 
   --fg: #e6edf3;
   --fg-dim: #8b949e;
