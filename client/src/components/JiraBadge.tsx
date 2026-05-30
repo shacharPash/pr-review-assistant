@@ -38,17 +38,23 @@ export function JiraBadge() {
 
   // No tickets known to the server. If we can spot a ticket-shaped key in
   // the PR text anyway, show a "configure to enable" hint so the user knows
-  // why no link is appearing.
+  // why no link is appearing — clickable for the full setup instructions.
   if (tickets.length === 0) {
     const guessed = guessJiraKey(bundle.meta.title, bundle.meta.body, bundle.commitMessages);
     if (!guessed) return null;
     return (
-      <div className="jira-badge unconfigured" title="Set JIRA_BASE_URL in .env to enable Jira links">
-        <JiraIcon />
-        <span className="jira-badge-key">{guessed}</span>
-        <span className="jira-badge-more" style={{ fontStyle: 'italic' }}>
-          set JIRA_BASE_URL
-        </span>
+      <div className={`jira-badge unconfigured ${open ? 'open' : ''}`} onMouseLeave={() => setOpen(false)}>
+        <button
+          type="button"
+          className="jira-badge-btn ghost"
+          onClick={() => setOpen((v) => !v)}
+          title={`Found ${guessed} — click to set up Jira links`}
+        >
+          <JiraIcon />
+          <span className="jira-badge-key">{guessed}</span>
+          <span className="jira-badge-cta">Set up →</span>
+        </button>
+        {open && <JiraSetupPopover detectedKey={guessed} />}
       </div>
     );
   }
@@ -117,4 +123,40 @@ function guessJiraKey(title: string, body: string, commits: string[]): string | 
   const haystack = [title, body, ...commits].join('\n');
   const m = haystack.match(JIRA_KEY_RE);
   return m ? `${m[1]}-${m[2]}` : null;
+}
+
+function JiraSetupPopover({ detectedKey }: { detectedKey: string }) {
+  const envExample = `JIRA_BASE_URL=https://your-org.atlassian.net
+JIRA_EMAIL=you@your-org.com
+JIRA_API_TOKEN=your-token-here`;
+  return (
+    <div className="jira-pop setup">
+      <div className="jira-setup-title">Set up Jira links</div>
+      <p className="jira-setup-text">
+        Found <code>{detectedKey}</code> in this PR. Add Jira env vars to enable links and ticket previews.
+      </p>
+      <ol className="jira-setup-steps">
+        <li>
+          Create a <code>.env</code> file in the project root (next to <code>package.json</code>).
+        </li>
+        <li>
+          For <strong>links only</strong>, set just the base URL:
+          <pre className="jira-setup-pre">JIRA_BASE_URL=https://your-org.atlassian.net</pre>
+        </li>
+        <li>
+          For <strong>full ticket details</strong> (title, status, description), also add:
+          <pre className="jira-setup-pre">{envExample}</pre>
+          <a
+            href="https://id.atlassian.com/manage-profile/security/api-tokens"
+            target="_blank"
+            rel="noreferrer"
+            className="jira-setup-link"
+          >
+            Create an Atlassian API token →
+          </a>
+        </li>
+        <li>Restart the dev server (<code>npm run dev</code>) to pick up the new env.</li>
+      </ol>
+    </div>
+  );
 }

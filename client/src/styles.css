@@ -264,7 +264,7 @@ button { font: inherit; }
 }
 .jira-badge-btn:hover { border-color: var(--accent); }
 .jira-badge.open .jira-badge-btn { border-color: var(--accent); }
-.jira-badge-icon { display: inline-block; vertical-align: -2px; }
+.jira-badge-icon { display: inline-block; vertical-align: -2px; flex-shrink: 0; }
 .jira-badge-more {
   font-size: 10px;
   background: var(--bg-elev);
@@ -272,6 +272,72 @@ button { font: inherit; }
   padding: 0 4px;
   border-radius: 3px;
 }
+/* Unconfigured / "ghost" hint badge: a dimmed clickable pill that opens
+ * a setup popover. Distinct from the active badge so it doesn't draw the
+ * eye away from real PR content. */
+.jira-badge-btn.ghost {
+  opacity: 0.75;
+  border-style: dashed;
+}
+.jira-badge-btn.ghost:hover {
+  opacity: 1;
+  border-style: solid;
+}
+.jira-badge-cta {
+  font-size: 10px;
+  color: var(--fg-dim);
+  font-style: italic;
+  margin-left: 2px;
+}
+.jira-pop.setup {
+  width: 420px;
+  padding: 14px 16px;
+  line-height: 1.45;
+}
+.jira-setup-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg);
+  margin-bottom: 6px;
+}
+.jira-setup-text {
+  font-size: 12px;
+  color: var(--fg-dim);
+  margin: 0 0 10px;
+}
+.jira-setup-text code,
+.jira-setup-steps code {
+  font-family: var(--mono);
+  font-size: 11px;
+  background: var(--bg-elev-2, rgba(255, 255, 255, 0.06));
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+.jira-setup-steps {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12px;
+  color: var(--fg);
+}
+.jira-setup-steps li { margin-bottom: 8px; }
+.jira-setup-pre {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  background: var(--bg-elev-2, rgba(255, 255, 255, 0.05));
+  padding: 6px 8px;
+  border-radius: 4px;
+  margin: 6px 0 4px;
+  overflow-x: auto;
+  white-space: pre;
+  color: var(--fg);
+}
+.jira-setup-link {
+  display: inline-block;
+  font-size: 11px;
+  color: var(--accent);
+  text-decoration: none;
+}
+.jira-setup-link:hover { text-decoration: underline; }
 .jira-pop {
   position: absolute;
   top: calc(100% + 6px);
