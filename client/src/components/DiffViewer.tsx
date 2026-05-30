@@ -20,6 +20,10 @@ export function DiffViewer({ file, position }: Props) {
   const blameEntry = useStore((s) => (file ? s.blame[file.path] : undefined));
   const theme = usePrefs((s) => s.theme);
   const viewMode = usePrefs((s) => s.viewMode);
+  const hideReviewerComments = usePrefs((s) => s.hideReviewerComments);
+  const toggleHideReviewerComments = usePrefs((s) => s.toggleHideReviewerComments);
+  const reviewComments = useStore((s) => s.reviewComments);
+  const reviewerCountOnFile = reviewComments?.inline.filter((c) => c.path === file?.path).length ?? 0;
   const [commentEditor, setCommentEditor] = useState<MonacoEditor.ICodeEditor | null>(null);
   const [blameVisible, setBlameVisible] = useState(false);
 
@@ -175,6 +179,21 @@ export function DiffViewer({ file, position }: Props) {
           >
             <span className="blame-toggle-icon">👤</span>
             <span>{blameVisible ? 'Blame on' : 'Blame'}</span>
+          </button>
+        )}
+        {reviewerCountOnFile > 0 && (
+          <button
+            type="button"
+            className={`blame-toggle bots ${hideReviewerComments ? '' : 'on'}`}
+            onClick={toggleHideReviewerComments}
+            title={
+              hideReviewerComments
+                ? `Show ${reviewerCountOnFile} bot/reviewer comment${reviewerCountOnFile === 1 ? '' : 's'} on this file`
+                : `Hide all bot/reviewer comments on the diff (still visible in Activity tab)`
+            }
+          >
+            <span className="blame-toggle-icon">🤖</span>
+            <span>{hideReviewerComments ? 'Bots off' : `Bots ${reviewerCountOnFile}`}</span>
           </button>
         )}
         {noiseHunkCount > 0 && (

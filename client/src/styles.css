@@ -965,6 +965,29 @@ button { font: inherit; }
   line-height: 1.45;
 }
 .rc-card.is-bot { background: rgba(168, 138, 255, 0.04); }
+.rc-card.collapsed { padding: 4px 10px; }
+.rc-card.collapsed .rc-head { margin-bottom: 0; }
+.rc-fold {
+  background: transparent;
+  border: 0;
+  color: var(--fg-faint);
+  cursor: pointer;
+  padding: 0 4px;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+.rc-fold:hover { color: var(--fg); }
+.rc-preview {
+  color: var(--fg-dim);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  flex: 1;
+  margin: 0 8px;
+  font-style: italic;
+}
 /* Per-brand left-border + tint */
 .rc-card.brand-cursor      { border-left-color: #1b9e64; }
 .rc-card.brand-claude      { border-left-color: #c97c5a; }
@@ -1131,6 +1154,38 @@ button { font: inherit; }
   background: rgba(110, 118, 129, 0.12);
   color: var(--fg-dim);
   border: 1px solid var(--border);
+}
+
+.rc-activity-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border-soft);
+  font-size: 11px;
+  position: sticky;
+  top: 0;
+  background: var(--bg-elev);
+  z-index: 2;
+}
+.rc-hide-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--fg-dim);
+  cursor: pointer;
+  margin-left: auto;
+}
+.rc-hide-toggle input { margin: 0; cursor: pointer; }
+
+.rc-pr-card.collapsed { padding: 4px 12px; }
+.rc-pr-card.collapsed .rc-head { margin-bottom: 0; }
+
+/* Bots toggle styled like the blame toggle but purple */
+.blame-toggle.bots.on {
+  background: rgba(168, 138, 255, 0.18);
+  border-color: rgba(168, 138, 255, 0.5);
+  color: #b89dff;
 }
 
 .rc-empty {
@@ -2135,7 +2190,9 @@ button { font: inherit; }
   flex-direction: column;
 }
 .tldr-slot > .tldr > .tldr-body,
-.tldr-slot > .tldr > .persona-body { flex: 1; min-height: 0; }
+.tldr-slot > .tldr > .persona-body,
+.tldr-slot > .tldr > .review-activity-pane,
+.tldr-slot > .tldr > .tldr-skeleton { flex: 1; min-height: 0; overflow-y: auto; }
 
 /* Drag handle between TLDR and file list */
 .tldr-resizer {

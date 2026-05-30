@@ -1,4 +1,6 @@
+import { useState } from 'react';
 import { useStore } from '../state/store.js';
+import { usePrefs } from '../state/preferences.js';
 import { BotAvatar } from './BotAvatar.js';
 import type { PRLevelComment } from '@shared/reviewComments';
 
@@ -14,6 +16,19 @@ export function ReviewActivityPane() {
   const error = useStore((s) => s.reviewCommentsError);
   const reviewComments = useStore((s) => s.reviewComments);
   const refetch = useStore((s) => s.fetchReviewComments);
+  const hideAll = usePrefs((s) => s.hideReviewerComments);
+  const toggleHideAll = usePrefs((s) => s.toggleHideReviewerComments);
+  const [collapsedById, setCollapsedById] = useState<Record<string, boolean>>({});
+  const [allCollapsed, setAllCollapsed] = useState(false);
+
+  const setAllCollapsedState = (next: boolean) => {
+    setAllCollapsed(next);
+    // Reset per-item overrides when toggling globally so the new state takes effect.
+    setCollapsedById({});
+  };
+  const toggleOne = (id: string) =>
+    setCollapsedById((c) => ({ ...c, [id]: !(c[id] ?? allCollapsed) }));
+  const isCollapsed = (id: string) => collapsedById[id] ?? allCollapsed;
 
   if (status === 'loading' || status === 'idle') {
     return (
@@ -61,6 +76,22 @@ export function ReviewActivityPane() {
 
   return (
     <div className="review-activity-pane">
+      <div className="rc-activity-toolbar">
+        <button
+          className="link-btn small"
+          onClick={() => setAllCollapsedState(!allCollapsed)}
+        >
+          {allCollapsed ? '▾ Expand all' : '▸ Collapse all'}
+        </button>
+        <label className="rc-hide-toggle">
+          <input
+            type="checkbox"
+            checked={hideAll}
+            onChange={toggleHideAll}
+          />
+          Hide bot comments in diff
+        </label>
+      </div>
       {inline.length > 0 && (
         <div className="rc-inline-summary">
           <div className="rc-inline-summary-title">
@@ -77,18 +108,52 @@ export function ReviewActivityPane() {
         </div>
       )}
       <div className="rc-pr-level-list">
-        {prLevel.map((c) => <PRLevelCommentCard key={c.id} comment={c} />)}
+        {prLevel.map((c) => (
+          <PRLevelCommentCard
+            key={c.id}
+            comment={c}
+            collapsed={isCollapsed(c.id)}
+            onToggle={() => toggleOne(c.id)}
+          />
+        ))}
       </div>
     </div>
   );
 }
 
-function PRLevelCommentCard({ comment }: { comment: PRLevelComment }) {
+function PRLevelCommentCard({
+  comment,
+  collapsed,
+  onToggle,
+}: {
+  comment: PRLevelComment;
+  collapsed: boolean;
+  onToggle: () => void;
+}) {
   const a = comment.author;
   const when = formatRelative(comment.createdAt);
+  const preview = comment.body
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/[#*`>_-]+/g, '')
+    .trim()
+    .split('\n')[0]
+    .slice(0, 100);
   return (
-    <div className={`rc-pr-card brand-${a.brand ?? 'none'} ${a.type === 'Bot' ? 'is-bot' : ''}`}>
+    <div
+      className={`rc-pr-card brand-${a.brand ?? 'none'} ${a.type === 'Bot' ? 'is-bot' : ''} ${
+        collapsed ? 'collapsed' : ''
+      }`}
+    >
       <div className="rc-head">
+        <button
+          type="button"
+          className="rc-fold"
+          onClick={onToggle}
+          title={collapsed ? 'Expand' : 'Collapse'}
+          aria-label={collapsed ? 'Expand' : 'Collapse'}
+        >
+          {collapsed ? '▸' : '▾'}
+        </button>
         <BotAvatar author={a} size={20} />
         <span className="rc-name">{a.login.replace(/\[bot\]$/, '')}</span>
         {a.type === 'Bot' && <span className="rc-bot-tag">bot</span>}
@@ -97,6 +162,7 @@ function PRLevelCommentCard({ comment }: { comment: PRLevelComment }) {
             {formatState(comment.reviewState)}
           </span>
         )}
+        {collapsed && preview && <span className="rc-preview">{preview}</span>}
         <span className="rc-when">{when}</span>
         <a
           className="rc-open"
@@ -108,10 +174,12 @@ function PRLevelCommentCard({ comment }: { comment: PRLevelComment }) {
           ↗
         </a>
       </div>
-      <div
-        className="rc-body"
-        dangerouslySetInnerHTML={{ __html: renderMarkdownish(comment.body) }}
-      />
+      {!collapsed && (
+        <div
+          className="rc-body"
+          dangerouslySetInnerHTML={{ __html: renderMarkdownish(comment.body) }}
+        />
+      )}
     </div>
   );
 }

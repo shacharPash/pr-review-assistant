@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { editor as MonacoEditor } from 'monaco-editor';
 import { useStore } from '../state/store.js';
+import { usePrefs } from '../state/preferences.js';
 import { BotAvatar } from './BotAvatar.js';
 import type { InlineReviewComment } from '@shared/reviewComments';
 
@@ -20,6 +21,9 @@ interface Zone {
   line: number; // monaco line where the zone sits
 }
 
+const COLLAPSED_CARD_HEIGHT = 32; // header-only row
+const MIN_ZONE_HEIGHT = 48;
+
 /**
  * Renders OTHER reviewers' / bots' inline comments as Monaco view zones on
  * the modified side. Comments are read-only (we don't post replies from here).
@@ -30,7 +34,15 @@ interface Zone {
  */
 export function ReviewCommentsLayer({ editor, filePath, newLineMap }: Props) {
   const reviewComments = useStore((s) => s.reviewComments);
+  const hideAll = usePrefs((s) => s.hideReviewerComments);
   const [zones, setZones] = useState<Zone[]>([]);
+  // Per-comment collapse state, keyed by comment id. Defaults to expanded.
+  // Lives in component state (not preferences) so it resets per file open —
+  // intentional: collapse is a "while I'm reading this" affordance.
+  const [collapsedById, setCollapsedById] = useState<Record<string, boolean>>({});
+
+  const toggleCollapsed = (id: string) =>
+    setCollapsedById((c) => ({ ...c, [id]: !c[id] }));
 
   // Same Monaco-line <-> real-line translation as InlineCommentsLayer.
   const realToMonaco = (realLine: number): number => {
@@ -40,7 +52,7 @@ export function ReviewCommentsLayer({ editor, filePath, newLineMap }: Props) {
   };
 
   useEffect(() => {
-    if (!editor) return;
+    if (!editor || hideAll) return;
     const inline = reviewComments?.inline ?? [];
 
     // Group comments by REAL line for this file. We only render comments on
@@ -57,6 +69,7 @@ export function ReviewCommentsLayer({ editor, filePath, newLineMap }: Props) {
 
     const newZones: Zone[] = [];
     const stop = (e: Event) => { e.stopPropagation(); };
+    const observers: ResizeObserver[] = [];
 
     editor.changeViewZones((accessor) => {
       for (const [realLine, comments] of groups) {
@@ -67,12 +80,11 @@ export function ReviewCommentsLayer({ editor, filePath, newLineMap }: Props) {
         node.addEventListener('mouseup', stop);
         node.addEventListener('click', stop);
         node.addEventListener('wheel', stop);
-        // Height grows with comment count; cap at 320 so a long chain doesn't
-        // dominate the screen — overflow scrolls inside the zone.
-        const heightInPx = Math.min(320, 80 + comments.length * 110);
+        // Start with a reasonable placeholder height; we re-layout to the
+        // measured content height as soon as React mounts the inner thread.
         const id = accessor.addZone({
           afterLineNumber: monacoLine,
-          heightInPx,
+          heightInPx: MIN_ZONE_HEIGHT,
           domNode: node,
         });
         newZones.push({ id, node, comments, line: monacoLine });
@@ -80,13 +92,47 @@ export function ReviewCommentsLayer({ editor, filePath, newLineMap }: Props) {
     });
     setZones(newZones);
 
+    // Re-layout each zone whenever its rendered content's height changes
+    // (initial mount, collapse toggles, "Show more" expansion, etc.). This
+    // is the fix for the giant empty gap below short comments.
+    const requestRelayout = (zone: Zone) => {
+      const content = zone.node.firstElementChild as HTMLElement | null;
+      if (!content) return;
+      const h = Math.max(MIN_ZONE_HEIGHT, content.scrollHeight + 8 /* zone padding */);
+      editor.changeViewZones((accessor) => accessor.layoutZone(zone.id));
+      // Monaco reads zone height from the registered heightInPx — we have to
+      // re-add the zone with the new height. The cleanest way is to mutate
+      // via changeViewZones removing + re-adding, but Monaco also exposes a
+      // shortcut via `IViewZoneChangeAccessor.layoutZone` AFTER updating the
+      // ZONE OBJECT's heightInPx. Since we stored zone objects by id, we set
+      // heightInPx on the original options indirectly through a re-add:
+      editor.changeViewZones((accessor) => {
+        accessor.removeZone(zone.id);
+        const newId = accessor.addZone({
+          afterLineNumber: zone.line,
+          heightInPx: h,
+          domNode: zone.node,
+        });
+        zone.id = newId; // mutate so subsequent re-layouts target the new id
+      });
+    };
+
+    for (const zone of newZones) {
+      const ro = new ResizeObserver(() => requestRelayout(zone));
+      ro.observe(zone.node);
+      observers.push(ro);
+    }
+
     return () => {
+      for (const ro of observers) ro.disconnect();
       editor.changeViewZones((accessor) => {
         for (const z of newZones) accessor.removeZone(z.id);
       });
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editor, filePath, reviewComments, JSON.stringify(newLineMap)]);
+  }, [editor, filePath, reviewComments, hideAll, JSON.stringify(newLineMap)]);
+
+  if (hideAll) return null;
 
   return (
     <>
@@ -94,7 +140,12 @@ export function ReviewCommentsLayer({ editor, filePath, newLineMap }: Props) {
         createPortal(
           <div className="rc-thread">
             {z.comments.map((c) => (
-              <ReviewCommentCard key={c.id} comment={c} />
+              <ReviewCommentCard
+                key={c.id}
+                comment={c}
+                collapsed={!!collapsedById[c.id]}
+                onToggle={() => toggleCollapsed(c.id)}
+              />
             ))}
           </div>,
           z.node,
@@ -104,15 +155,45 @@ export function ReviewCommentsLayer({ editor, filePath, newLineMap }: Props) {
   );
 }
 
-function ReviewCommentCard({ comment }: { comment: InlineReviewComment }) {
+function ReviewCommentCard({
+  comment,
+  collapsed,
+  onToggle,
+}: {
+  comment: InlineReviewComment;
+  collapsed: boolean;
+  onToggle: () => void;
+}) {
   const a = comment.author;
   const when = formatRelative(comment.createdAt);
+  // When collapsed, show a one-line preview next to the header so the reader
+  // still sees what the comment is about without expanding.
+  const preview = comment.body
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/[#*`>_-]+/g, '')
+    .trim()
+    .split('\n')[0]
+    .slice(0, 80);
   return (
-    <div className={`rc-card brand-${a.brand ?? 'none'} ${a.type === 'Bot' ? 'is-bot' : ''}`}>
+    <div
+      className={`rc-card brand-${a.brand ?? 'none'} ${a.type === 'Bot' ? 'is-bot' : ''} ${
+        collapsed ? 'collapsed' : ''
+      }`}
+    >
       <div className="rc-head">
+        <button
+          type="button"
+          className="rc-fold"
+          onClick={onToggle}
+          title={collapsed ? 'Expand' : 'Collapse'}
+          aria-label={collapsed ? 'Expand comment' : 'Collapse comment'}
+        >
+          {collapsed ? '▸' : '▾'}
+        </button>
         <BotAvatar author={a} />
         <span className="rc-name">{a.login.replace(/\[bot\]$/, '')}</span>
         {a.type === 'Bot' && <span className="rc-bot-tag">bot</span>}
+        {collapsed && preview && <span className="rc-preview">{preview}</span>}
         <span className="rc-when">{when}</span>
         <a
           className="rc-open"
@@ -124,7 +205,12 @@ function ReviewCommentCard({ comment }: { comment: InlineReviewComment }) {
           ↗
         </a>
       </div>
-      <div className="rc-body" dangerouslySetInnerHTML={{ __html: renderMarkdownish(comment.body) }} />
+      {!collapsed && (
+        <div
+          className="rc-body"
+          dangerouslySetInnerHTML={{ __html: renderMarkdownish(comment.body) }}
+        />
+      )}
     </div>
   );
 }
