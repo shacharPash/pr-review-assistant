@@ -5,6 +5,7 @@ import type { DiffFile, BlameRange } from '@shared/types';
 import { fileContentFor, useStore } from '../state/store.js';
 import { monacoThemeFor, usePrefs } from '../state/preferences.js';
 import { InlineCommentsLayer } from './InlineCommentsLayer.js';
+import { ReviewCommentsLayer } from './ReviewCommentsLayer.js';
 import { BlameHoverProvider } from './BlameHoverProvider.js';
 
 interface Props {
@@ -252,6 +253,11 @@ export function DiffViewer({ file, position }: Props) {
         </div>
       )}
       <InlineCommentsLayer
+        editor={commentEditor}
+        filePath={file.path}
+        newLineMap={hasFull ? undefined : newLineMap}
+      />
+      <ReviewCommentsLayer
         editor={commentEditor}
         filePath={file.path}
         newLineMap={hasFull ? undefined : newLineMap}

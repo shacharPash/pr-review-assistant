@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { PRBundle, DiffFile, TLDR, BlameRange } from '@shared/types';
 import type { PersonaId } from '@shared/personas';
+import type { PRComments } from '@shared/reviewComments';
 
 export interface FullFileContent {
   status: 'loading' | 'ready' | 'error';
@@ -21,7 +22,7 @@ export interface LineComment {
   startLine?: number;
 }
 
-export type TLDRTab = 'brief' | PersonaId;
+export type TLDRTab = 'brief' | PersonaId | 'activity';
 
 export type ScopeKind = 'all' | 'commit' | 'since-review';
 
@@ -65,8 +66,13 @@ interface State {
   scopeLoading: boolean;
   /** SHA we last successfully posted a review at, per (owner/repo#number). null when none. */
   lastReviewedSha: string | null;
+  /** Existing review comments + summaries from other reviewers / bots. */
+  reviewComments: PRComments | null;
+  reviewCommentsStatus: 'idle' | 'loading' | 'ready' | 'error';
+  reviewCommentsError?: string;
   loadPR: (ref: string) => Promise<void>;
   selectScope: (scope: SelectedScope) => Promise<void>;
+  fetchReviewComments: () => Promise<void>;
   selectFile: (path: string) => void;
   toggleNoise: () => void;
   startTLDR: () => void;
@@ -326,6 +332,8 @@ export const useStore = create<State>((set, get) => ({
   scopedFiles: null,
   scopeLoading: false,
   lastReviewedSha: null,
+  reviewComments: null,
+  reviewCommentsStatus: 'idle',
 
   async loadPR(ref) {
     set({
@@ -347,6 +355,9 @@ export const useStore = create<State>((set, get) => ({
       scopedFiles: null,
       scopeLoading: false,
       lastReviewedSha: null,
+      reviewComments: null,
+      reviewCommentsStatus: 'idle',
+      reviewCommentsError: undefined,
     });
     try {
       const res = await fetch(`/api/pr?ref=${encodeURIComponent(ref)}`);
@@ -382,6 +393,8 @@ export const useStore = create<State>((set, get) => ({
       openDiagramStream(bundle, set);
       openBeforeAfterStream(bundle, set);
       openComplexityStream(bundle, set);
+      // Reviewer/bot comments — non-blocking; UI shows once they arrive.
+      get().fetchReviewComments();
       if (firstVisible) {
         get().fetchFullContent(firstVisible.path);
         get().fetchBlame(firstVisible.path);
@@ -438,6 +451,33 @@ export const useStore = create<State>((set, get) => ({
       });
     } catch (err) {
       set({ scopeLoading: false, error: { message: (err as Error).message } });
+    }
+  },
+
+  async fetchReviewComments() {
+    const { bundle } = get();
+    if (!bundle) return;
+    set({ reviewCommentsStatus: 'loading', reviewCommentsError: undefined });
+    try {
+      const url = `/api/pr/review-comments?owner=${encodeURIComponent(bundle.meta.owner)}` +
+        `&repo=${encodeURIComponent(bundle.meta.repo)}` +
+        `&number=${bundle.meta.number}` +
+        `&headSha=${bundle.meta.headSha}`;
+      const res = await fetch(url);
+      const data = await res.json();
+      if (!res.ok) {
+        set({
+          reviewCommentsStatus: 'error',
+          reviewCommentsError: data.error ?? 'Failed to load review comments.',
+        });
+        return;
+      }
+      set({ reviewComments: data as PRComments, reviewCommentsStatus: 'ready' });
+    } catch (err) {
+      set({
+        reviewCommentsStatus: 'error',
+        reviewCommentsError: (err as Error).message,
+      });
     }
   },
 
@@ -534,7 +574,7 @@ export const useStore = create<State>((set, get) => ({
 
   selectTab(tab) {
     set({ activeTab: tab });
-    if (tab === 'brief') return;
+    if (tab === 'brief' || tab === 'activity') return;
     const existing = get().personaResults[tab];
     if (existing && (existing.status === 'streaming' || existing.status === 'done')) return;
     const bundle = get().bundle;

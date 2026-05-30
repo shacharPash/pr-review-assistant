@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useStore } from '../state/store.js';
 import { usePrefs } from '../state/preferences.js';
 import { DiagramPanel } from './DiagramPanel.js';
+import { ReviewActivityPane } from './ReviewActivityPane.js';
 import type { PersonaId } from '@shared/personas';
 
 type Kind = 'core' | 'risk' | 'note';
@@ -12,7 +13,7 @@ const KIND_TITLE: Record<Kind, string> = {
   core: 'Core change', risk: 'Watch out for', note: 'Context',
 };
 
-type TabId = 'brief' | PersonaId;
+type TabId = 'brief' | PersonaId | 'activity';
 
 // Plain English first — it streams faster than Brief (which needs deeper
 // model reasoning to name specific files/risks) so the user gets readable
@@ -22,6 +23,7 @@ const TABS: { id: TabId; emoji: string; label: string }[] = [
   { id: 'brief', emoji: '📌', label: 'Brief' },
   { id: 'checklist', emoji: '✅', label: 'Checklist' },
   { id: 'tweet', emoji: '🐦', label: 'Tweet' },
+  { id: 'activity', emoji: '🤖', label: 'Activity' },
 ];
 
 export function TLDRPanel() {
@@ -103,6 +105,7 @@ export function TLDRPanel() {
           retry={() => retryPersona('tweet')}
         />
       )}
+      {activeTab === 'activity' && <ReviewActivityPane />}
 
       <DiagramPanel />
     </div>
@@ -166,11 +169,14 @@ function PersonaPaneExplain({
   result: ReturnType<typeof useStore.getState>['personaResults']['explain'];
   retry: () => void;
 }) {
-  if (!result) {
+  if (!result || (result.status === 'streaming' && !result.text)) {
     return (
-      <div className="persona-loading">
-        <div className="emoji-big">💬</div>
-        <div>Writing the plain-English version…</div>
+      <div className="tldr-skeleton" aria-label="Writing plain-English summary">
+        <div className="skel-row" style={{ width: '94%' }} />
+        <div className="skel-row" style={{ width: '78%' }} />
+        <div className="skel-row" style={{ width: '0', height: 6 }} />
+        <div className="skel-row" style={{ width: '88%' }} />
+        <div className="skel-row" style={{ width: '60%' }} />
       </div>
     );
   }
@@ -208,11 +214,13 @@ function PersonaPaneChecklist({
   // Local-only checkmark state; not persisted because it's a thinking tool, not a record.
   const [checked, setChecked] = useState<Record<number, boolean>>({});
 
-  if (!result) {
+  if (!result || (result.status === 'streaming' && !result.text)) {
     return (
-      <div className="persona-loading">
-        <div className="emoji-big">✅</div>
-        <div>Generating the verification checklist…</div>
+      <div className="tldr-skeleton" aria-label="Generating verification checklist">
+        <div className="skel-row check" style={{ width: '92%' }} />
+        <div className="skel-row check" style={{ width: '82%' }} />
+        <div className="skel-row check" style={{ width: '88%' }} />
+        <div className="skel-row check" style={{ width: '70%' }} />
       </div>
     );
   }
@@ -254,11 +262,11 @@ function PersonaPaneTweet({
   result: ReturnType<typeof useStore.getState>['personaResults']['tweet'];
   retry: () => void;
 }) {
-  if (!result) {
+  if (!result || (result.status === 'streaming' && !result.text)) {
     return (
-      <div className="persona-loading">
-        <div className="emoji-big">🐦</div>
-        <div>Crafting the one-liner…</div>
+      <div className="tldr-skeleton" aria-label="Crafting the one-liner">
+        <div className="skel-row" style={{ width: '96%' }} />
+        <div className="skel-row" style={{ width: '64%' }} />
       </div>
     );
   }

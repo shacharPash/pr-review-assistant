@@ -931,6 +931,215 @@ button { font: inherit; }
   align-items: center;
   gap: 3px;
 }
+.reviewer-count-badge {
+  background: rgba(168, 138, 255, 0.12);
+  color: #b89dff;
+  border: 1px solid rgba(168, 138, 255, 0.5);
+  font-weight: 600;
+  font-size: 9px !important;
+  padding: 0 5px !important;
+  border-radius: 9px !important;
+  text-transform: none !important;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+/* ----- Review/bot comments (read-only, from other reviewers) ----------- */
+.pra-view-zone.review { padding: 6px 8px; }
+.rc-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 100%;
+  overflow-y: auto;
+}
+.rc-card {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--fg-faint);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--fg);
+  line-height: 1.45;
+}
+.rc-card.is-bot { background: rgba(168, 138, 255, 0.04); }
+/* Per-brand left-border + tint */
+.rc-card.brand-cursor      { border-left-color: #1b9e64; }
+.rc-card.brand-claude      { border-left-color: #c97c5a; }
+.rc-card.brand-copilot     { border-left-color: #8b949e; }
+.rc-card.brand-augment     { border-left-color: #5fb0ff; }
+.rc-card.brand-codex       { border-left-color: #19c37d; }
+.rc-card.brand-jit         { border-left-color: #ff6b6b; }
+.rc-card.brand-sonarcloud  { border-left-color: #4e9bcd; }
+.rc-card.brand-devin       { border-left-color: #ff9d4d; }
+.rc-card.brand-graphite    { border-left-color: #ec4899; }
+.rc-card.brand-bugbot-other { border-left-color: #888; }
+
+.rc-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  font-size: 11px;
+}
+.rc-avatar {
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.rc-avatar.user { object-fit: cover; }
+.rc-avatar.bot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  color: #fff;
+  background: #555;
+}
+.rc-avatar.brand-cursor      { background: #1b9e64; }
+.rc-avatar.brand-claude      { background: #c97c5a; }
+.rc-avatar.brand-copilot     { background: #6e7681; }
+.rc-avatar.brand-augment     { background: #5fb0ff; }
+.rc-avatar.brand-codex       { background: #19c37d; }
+.rc-avatar.brand-jit         { background: #ff6b6b; }
+.rc-avatar.brand-sonarcloud  { background: #4e9bcd; }
+.rc-avatar.brand-devin       { background: #ff9d4d; }
+.rc-avatar.brand-graphite    { background: #ec4899; }
+.rc-avatar.brand-bugbot-other,
+.rc-avatar.brand-none        { background: #6e7681; }
+
+.rc-name { color: var(--fg); font-weight: 600; }
+.rc-bot-tag {
+  font-size: 9px;
+  background: rgba(255, 255, 255, 0.08);
+  padding: 1px 5px;
+  border-radius: 8px;
+  color: var(--fg-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.rc-when { color: var(--fg-faint); margin-left: auto; font-size: 10.5px; }
+.rc-open {
+  color: var(--fg-faint);
+  text-decoration: none;
+  font-size: 12px;
+  padding: 0 2px;
+}
+.rc-open:hover { color: var(--accent); }
+.rc-body { color: var(--fg); font-size: 12px; line-height: 1.5; }
+.rc-body code {
+  background: rgba(255, 255, 255, 0.06);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-family: var(--mono);
+}
+.rc-body .rc-pre {
+  background: rgba(0, 0, 0, 0.35);
+  padding: 8px 10px;
+  border-radius: 4px;
+  overflow-x: auto;
+  margin: 6px 0;
+  font-size: 11px;
+}
+.rc-body .rc-pre code { background: transparent; padding: 0; }
+.rc-body .rc-h {
+  font-size: 12px;
+  font-weight: 600;
+  margin: 8px 0 4px;
+  color: var(--fg);
+}
+.rc-body .rc-p { margin: 4px 0; }
+.rc-body a { color: var(--accent); }
+
+/* ----- Activity tab (PR-level reviewer/bot summaries) ----------------- */
+.review-activity-pane {
+  padding: 8px 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.rc-inline-summary {
+  font-size: 11px;
+  color: var(--fg-dim);
+  padding: 8px 10px;
+  background: rgba(168, 138, 255, 0.06);
+  border: 1px solid rgba(168, 138, 255, 0.25);
+  border-radius: 6px;
+}
+.rc-inline-summary-title { color: var(--fg); font-weight: 600; margin-bottom: 6px; }
+.rc-inline-summary-list { display: flex; flex-wrap: wrap; gap: 4px; }
+.rc-inline-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 10.5px;
+  color: var(--fg);
+}
+.rc-inline-pill-count {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 700;
+  padding: 0 5px;
+  border-radius: 8px;
+  font-size: 10px;
+}
+.rc-pr-level-list { display: flex; flex-direction: column; gap: 10px; }
+.rc-pr-card {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--fg-faint);
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+.rc-pr-card.is-bot { background: rgba(168, 138, 255, 0.04); }
+.rc-pr-card.brand-cursor      { border-left-color: #1b9e64; }
+.rc-pr-card.brand-claude      { border-left-color: #c97c5a; }
+.rc-pr-card.brand-copilot     { border-left-color: #8b949e; }
+.rc-pr-card.brand-augment     { border-left-color: #5fb0ff; }
+.rc-pr-card.brand-codex       { border-left-color: #19c37d; }
+.rc-pr-card.brand-jit         { border-left-color: #ff6b6b; }
+.rc-pr-card.brand-sonarcloud  { border-left-color: #4e9bcd; }
+.rc-pr-card.brand-devin       { border-left-color: #ff9d4d; }
+.rc-pr-card.brand-graphite    { border-left-color: #ec4899; }
+.rc-pr-card.brand-bugbot-other { border-left-color: #888; }
+
+.rc-state {
+  font-size: 10px;
+  padding: 1px 7px;
+  border-radius: 10px;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.rc-state.state-approved {
+  background: rgba(46, 160, 67, 0.15);
+  color: #3fb950;
+  border: 1px solid rgba(46, 160, 67, 0.4);
+}
+.rc-state.state-changes_requested {
+  background: rgba(248, 81, 73, 0.12);
+  color: #f85149;
+  border: 1px solid rgba(248, 81, 73, 0.4);
+}
+.rc-state.state-commented {
+  background: rgba(110, 118, 129, 0.12);
+  color: var(--fg-dim);
+  border: 1px solid var(--border);
+}
+
+.rc-empty {
+  padding: 32px 16px;
+  text-align: center;
+  color: var(--fg-dim);
+}
+.rc-empty-emoji { font-size: 30px; margin-bottom: 8px; }
+.rc-empty-text { font-size: 12px; }
 
 /* ----- Commit selector ------------------------------------------------- */
 .commit-selector {

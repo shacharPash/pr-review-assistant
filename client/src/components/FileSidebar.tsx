@@ -13,6 +13,18 @@ export function FileSidebar() {
   const comments = useStore((s) => s.comments);
   const lineComments = useStore((s) => s.lineComments);
   const toggleReviewed = useStore((s) => s.toggleReviewed);
+  const reviewComments = useStore((s) => s.reviewComments);
+
+  // Map of file path → number of bot/reviewer inline comments. Used to
+  // surface bot activity in the sidebar so the reviewer can see which
+  // files already have comments from others.
+  const reviewerCountByFile = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const c of reviewComments?.inline ?? []) {
+      m.set(c.path, (m.get(c.path) ?? 0) + 1);
+    }
+    return m;
+  }, [reviewComments]);
 
   const { visible, hidden } = useMemo(() => {
     const visible: DiffFile[] = [];
@@ -96,6 +108,16 @@ export function FileSidebar() {
                     💬 {commentCount}
                   </span>
                 )}
+                {reviewerCountByFile.get(f.path) ? (
+                  <span
+                    className="badge reviewer-count-badge"
+                    title={`${reviewerCountByFile.get(f.path)} bot/reviewer comment${
+                      reviewerCountByFile.get(f.path) === 1 ? '' : 's'
+                    } on this file`}
+                  >
+                    🤖 {reviewerCountByFile.get(f.path)}
+                  </span>
+                ) : null}
               </div>
               <div className="path">{f.path}</div>
             </div>
