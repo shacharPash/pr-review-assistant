@@ -96,12 +96,21 @@ export async function fetchPR(input: string): Promise<PRBundle> {
   // committedDate, and authors (each with login + name) — that's enough to
   // populate our PRCommit[].
 
-  const [viewJSONRaw, diffRaw] = await Promise.all([
-    runGH(['pr', 'view', String(ref.number), '--repo', repoSlug, '--json', viewFields]),
-    runGH(['pr', 'diff', String(ref.number), '--repo', repoSlug]),
-  ]);
+  // Run gh view, gh diff, AND Jira in parallel. Jira can't start before
+  // we know the PR title/body/commit messages, so it chains off the view
+  // promise — but it still races against the (usually slower) diff fetch.
+  // For most PRs the diff is the long pole, making Jira effectively free.
+  const viewP = runGH(['pr', 'view', String(ref.number), '--repo', repoSlug, '--json', viewFields])
+    .then((raw) => JSON.parse(raw) as GHViewJSON);
+  const diffP = runGH(['pr', 'diff', String(ref.number), '--repo', repoSlug]);
+  const jiraP = viewP.then((view) => {
+    const commitMessages = view.commits.map((c) =>
+      c.messageBody ? `${c.messageHeadline}\n\n${c.messageBody}` : c.messageHeadline,
+    );
+    return collectJira(view.title, view.body ?? '', commitMessages);
+  });
 
-  const view: GHViewJSON = JSON.parse(viewJSONRaw);
+  const [view, diffRaw, jira] = await Promise.all([viewP, diffP, jiraP]);
 
   const meta: PRMeta = {
     owner: ref.owner,
@@ -127,8 +136,6 @@ export async function fetchPR(input: string): Promise<PRBundle> {
     author: c.authors?.[0]?.login || c.authors?.[0]?.name || meta.author,
     authoredAt: c.committedDate ?? new Date().toISOString(),
   }));
-
-  const jira = await collectJira(meta.title, meta.body ?? '', commitMessages);
 
   return { meta, files, commitMessages, commits, jira };
 }
