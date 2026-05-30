@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import { ClaudeRunner } from '../services/claudeRunner.js';
 import { getBundle, getHeadline, setHeadline } from '../services/cache.js';
+import { sanitizeSingleSentence } from '../services/sanitizeOneShot.js';
 
 export const headlineRouter = Router();
 
@@ -24,34 +25,8 @@ Fixes Vercel marketplace resources stuck on "suspended" after an overdue invoice
 Example of a BAD response (do not do this):
 This is a clear, well-described PR. Let me write the summary. Fixes Vercel marketplace resources... That's 138 characters.`;
 
-/** Strips Claude's chain-of-thought leaks ("Let me write...", "That's N characters") that occasionally slip past the prompt. */
-function sanitizeHeadline(raw: string): string {
-  let text = raw.trim();
-
-  // Drop common preamble openers up to (but not including) the real first sentence.
-  // Loop because Claude sometimes stacks two preambles ("OK. Let me write the summary. Fixes…").
-  const preambleRe = /^(?:(?:sure[,!.]|okay?[,!.]|alright[,!.]|here(?:'s|s)\s+(?:the|a|my)\s+(?:summary|one[- ]sentence(?:r| summary)?|sentence|tweet|headline)[:.]?|(?:let me|i(?:'ll| will))\s+(?:write|draft|give|provide|put together)\s+(?:the|a|my)?\s*(?:summary|one[- ]sentence(?:r| summary)?|sentence|tweet|headline)[:.]?|this\s+(?:is\s+a|pr\s+(?:is|has))[^.]*\.|the\s+pr\s+(?:is|has|describes|covers)[^.]*\.|i'll\s+keep\s+it[^.]*\.|got it[,!.]?))\s*/i;
-  for (let i = 0; i < 4 && preambleRe.test(text); i++) {
-    text = text.replace(preambleRe, '').trimStart();
-  }
-
-  // Strip trailing meta about character count / trimming, including any "let me trim" follow-ups.
-  text = text
-    .replace(/\s*(?:[—-]+\s*)?that(?:'s|s)?\s+\d+\s+(?:char(?:acter)?s?|words?)[^.]*\.?\s*$/i, '')
-    .replace(/\s*let me trim[^.]*\.?\s*$/i, '')
-    .replace(/\s*\(\s*\d+\s+(?:char(?:acter)?s?|words?)\s*\)\s*$/i, '')
-    .trim();
-
-  // If Claude wrote two sentences, keep only the first (cap at the first sentence-ending period).
-  // We treat ". " as a sentence boundary; we DO keep periods inside abbreviations because
-  // we also require the next char to be a capital letter or end-of-string.
-  const sentenceEnd = text.search(/\.\s+[A-Z]/);
-  if (sentenceEnd > 0 && sentenceEnd < text.length - 2) {
-    text = text.slice(0, sentenceEnd + 1);
-  }
-
-  return text.trim();
-}
+// Shared sanitizer lives in services/sanitizeOneShot.ts so the Tweet
+// route can use the exact same rules.
 
 headlineRouter.get('/api/headline/stream', (req: Request, res: Response) => {
   const owner = String(req.query.owner ?? '');
@@ -106,7 +81,7 @@ headlineRouter.get('/api/headline/stream', (req: Request, res: Response) => {
       /* swallow; we only deliver the sanitized full text on done */
     },
     onDone: (full) => {
-      const clean = sanitizeHeadline(full);
+      const clean = sanitizeSingleSentence(full);
       setHeadline(owner, repo, number, headSha, clean);
       send('chunk', clean);
       send('done', '');

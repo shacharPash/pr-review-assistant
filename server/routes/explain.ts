@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from 'express';
 import { ClaudeRunner } from '../services/claudeRunner.js';
 import { getBundle, getExplanation, setExplanation } from '../services/cache.js';
 import { findPersona } from '../../shared/personas.js';
+import { sanitizeSingleSentence } from '../services/sanitizeOneShot.js';
 
 export const explainRouter = Router();
 
@@ -55,10 +56,21 @@ explainRouter.get('/api/explain/stream', (req: Request, res: Response) => {
     return;
   }
 
+  // Tweet is a one-shot single sentence — same fragility as the headline,
+  // so we buffer-then-flush and run the shared sanitizer. Plain English and
+  // Checklist are multi-line, so streaming chunks still gives a useful "live"
+  // feel and small leaks at the head matter less.
+  const isOneShot = personaId === 'tweet';
+
   const runner = new ClaudeRunner({
-    onChunk: (delta) => send('chunk', delta),
+    onChunk: (delta) => {
+      if (isOneShot) return;
+      send('chunk', delta);
+    },
     onDone: (full) => {
-      setExplanation(owner, repo, number, headSha, personaId, full);
+      const finalText = isOneShot ? sanitizeSingleSentence(full) : full;
+      setExplanation(owner, repo, number, headSha, personaId, finalText);
+      if (isOneShot) send('chunk', finalText);
       send('done', '');
       res.end();
     },

@@ -153,7 +153,17 @@ function extractText(content: ClaudeContentBlock[]): string {
 
 function buildCustomPrompt(bundle: PRBundle, systemPrompt: string): string {
   const ctx = buildContext(bundle);
-  return `${systemPrompt}\n\n${ctx}`;
+  // Anchor the format rule at the END too. Large contexts (especially when
+  // Jira ticket descriptions get inlined) push the system prompt far away
+  // from where Claude generates, which empirically lets chain-of-thought
+  // openers like "Let me write…" or "The sentence:" slip through. Restating
+  // the rule right before generation makes it the last thing Claude sees.
+  const trailingReminder = `\n\n---\nREMINDER: Output ONLY the format requested in the system prompt at the top of this message.
+- No preamble of any kind ("Let me write…", "The summary:", "The sentence:", "The PR is…", "This is a clear PR…", etc.)
+- No trailing meta ("That's N characters.", "Let me trim.")
+- No second sentence unless the format explicitly asks for one
+- Begin with the first word of the actual output`;
+  return `${systemPrompt}\n\n${ctx}${trailingReminder}`;
 }
 
 function buildContext(bundle: PRBundle): string {
