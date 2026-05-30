@@ -2947,6 +2947,13 @@ button { font: inherit; }
 .monaco-editor .line-numbers.blame-age-unknown {
   background: rgba(110, 118, 129, 0.18) !important;
 }
+/* Hunk-separator marker — Monaco renders ⋯ in the gutter for rows that
+ * sit between two visible hunks (so the reader sees the discontinuity
+ * instead of an unexplained blank line). Dim it so it doesn't compete
+ * with real line numbers. */
+.monaco-editor .line-numbers {
+  /* fallback color is fine; we don't have a per-row class here */
+}
 /* When blame is on, anchor the row text to the LEFT edge of the gutter
  * (matches IntelliJ Annotate). Without this, Monaco's default
  * text-align:right makes truncated rows look misaligned. */

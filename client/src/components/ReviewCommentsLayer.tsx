@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { editor as MonacoEditor } from 'monaco-editor';
 import { useStore } from '../state/store.js';
@@ -51,6 +51,10 @@ export function ReviewCommentsLayer({ editor, filePath, newLineMap }: Props) {
     return idx >= 0 ? idx + 1 : realLine;
   };
 
+  // Mutable per-zone "current height" so the resize callback can update Monaco
+  // without re-running the effect. Lives in a ref to dodge stale closures.
+  const zonesRef = useRef<Zone[]>([]);
+
   useEffect(() => {
     if (!editor || hideAll) return;
     const inline = reviewComments?.inline ?? [];
@@ -69,7 +73,6 @@ export function ReviewCommentsLayer({ editor, filePath, newLineMap }: Props) {
 
     const newZones: Zone[] = [];
     const stop = (e: Event) => { e.stopPropagation(); };
-    const observers: ResizeObserver[] = [];
 
     editor.changeViewZones((accessor) => {
       for (const [realLine, comments] of groups) {
@@ -80,8 +83,9 @@ export function ReviewCommentsLayer({ editor, filePath, newLineMap }: Props) {
         node.addEventListener('mouseup', stop);
         node.addEventListener('click', stop);
         node.addEventListener('wheel', stop);
-        // Start with a reasonable placeholder height; we re-layout to the
-        // measured content height as soon as React mounts the inner thread.
+        // Start with a minimal placeholder height; <ZoneSizer> below will
+        // call setZoneHeight() once React renders the inner thread and the
+        // ResizeObserver measures the real content.
         const id = accessor.addZone({
           afterLineNumber: monacoLine,
           heightInPx: MIN_ZONE_HEIGHT,
@@ -90,41 +94,10 @@ export function ReviewCommentsLayer({ editor, filePath, newLineMap }: Props) {
         newZones.push({ id, node, comments, line: monacoLine });
       }
     });
+    zonesRef.current = newZones;
     setZones(newZones);
 
-    // Re-layout each zone whenever its rendered content's height changes
-    // (initial mount, collapse toggles, "Show more" expansion, etc.). This
-    // is the fix for the giant empty gap below short comments.
-    const requestRelayout = (zone: Zone) => {
-      const content = zone.node.firstElementChild as HTMLElement | null;
-      if (!content) return;
-      const h = Math.max(MIN_ZONE_HEIGHT, content.scrollHeight + 8 /* zone padding */);
-      editor.changeViewZones((accessor) => accessor.layoutZone(zone.id));
-      // Monaco reads zone height from the registered heightInPx — we have to
-      // re-add the zone with the new height. The cleanest way is to mutate
-      // via changeViewZones removing + re-adding, but Monaco also exposes a
-      // shortcut via `IViewZoneChangeAccessor.layoutZone` AFTER updating the
-      // ZONE OBJECT's heightInPx. Since we stored zone objects by id, we set
-      // heightInPx on the original options indirectly through a re-add:
-      editor.changeViewZones((accessor) => {
-        accessor.removeZone(zone.id);
-        const newId = accessor.addZone({
-          afterLineNumber: zone.line,
-          heightInPx: h,
-          domNode: zone.node,
-        });
-        zone.id = newId; // mutate so subsequent re-layouts target the new id
-      });
-    };
-
-    for (const zone of newZones) {
-      const ro = new ResizeObserver(() => requestRelayout(zone));
-      ro.observe(zone.node);
-      observers.push(ro);
-    }
-
     return () => {
-      for (const ro of observers) ro.disconnect();
       editor.changeViewZones((accessor) => {
         for (const z of newZones) accessor.removeZone(z.id);
       });
@@ -132,27 +105,74 @@ export function ReviewCommentsLayer({ editor, filePath, newLineMap }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor, filePath, reviewComments, hideAll, JSON.stringify(newLineMap)]);
 
+  // Re-register a zone with a new height. Called by <ZoneSizer> whenever
+  // its content measures a different height (fold, unfold, "show more",
+  // even the first mount after the placeholder height was registered).
+  const setZoneHeight = (zoneIndex: number, height: number) => {
+    if (!editor) return;
+    const zone = zonesRef.current[zoneIndex];
+    if (!zone) return;
+    const desired = Math.max(MIN_ZONE_HEIGHT, Math.round(height + 8));
+    editor.changeViewZones((accessor) => {
+      accessor.removeZone(zone.id);
+      const newId = accessor.addZone({
+        afterLineNumber: zone.line,
+        heightInPx: desired,
+        domNode: zone.node,
+      });
+      zone.id = newId;
+    });
+  };
+
   if (hideAll) return null;
 
   return (
     <>
-      {zones.map((z) =>
+      {zones.map((z, i) =>
         createPortal(
-          <div className="rc-thread">
-            {z.comments.map((c) => (
-              <ReviewCommentCard
-                key={c.id}
-                comment={c}
-                collapsed={!!collapsedById[c.id]}
-                onToggle={() => toggleCollapsed(c.id)}
-              />
-            ))}
-          </div>,
+          <ZoneSizer onHeight={(h) => setZoneHeight(i, h)}>
+            <div className="rc-thread">
+              {z.comments.map((c) => (
+                <ReviewCommentCard
+                  key={c.id}
+                  comment={c}
+                  collapsed={!!collapsedById[c.id]}
+                  onToggle={() => toggleCollapsed(c.id)}
+                />
+              ))}
+            </div>
+          </ZoneSizer>,
           z.node,
         ),
       )}
     </>
   );
+}
+
+/**
+ * Measures its own rendered height and notifies the parent whenever it
+ * changes. The ResizeObserver lives on this React-owned element (not the
+ * Monaco-sized outer view-zone wrapper, which has its height set externally)
+ * so collapsing/expanding cards INSIDE actually triggers a measurement.
+ */
+function ZoneSizer({
+  onHeight,
+  children,
+}: {
+  onHeight: (h: number) => void;
+  children: React.ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const measure = () => onHeight(el.scrollHeight);
+    measure(); // initial
+    const ro = new ResizeObserver(() => measure());
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [onHeight]);
+  return <div ref={ref}>{children}</div>;
 }
 
 function ReviewCommentCard({

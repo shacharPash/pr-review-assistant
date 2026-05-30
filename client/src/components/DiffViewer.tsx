@@ -119,7 +119,9 @@ export function DiffViewer({ file, position }: Props) {
       : (n: number) => {
           if (hasFull) return String(n);
           const real = newLineMap[n - 1];
-          return real ? String(real) : '';
+          // Separator rows between hidden hunks show `⋯` so the reader
+          // sees the discontinuity instead of an unexplained blank line.
+          return real ? String(real) : '⋯';
         };
 
     commentEditor.updateOptions({
@@ -133,7 +135,7 @@ export function DiffViewer({ file, position }: Props) {
         lineNumbers: (n: number) => {
           if (hasFull) return String(n);
           const real = oldLineMap[n - 1];
-          return real ? String(real) : '';
+          return real ? String(real) : '⋯';
         },
       });
     }
@@ -142,7 +144,7 @@ export function DiffViewer({ file, position }: Props) {
       commentEditor.updateOptions({
         lineNumbers: (n: number) => {
           const real = oldLineMap[n - 1];
-          return real ? String(real) : '';
+          return real ? String(real) : '⋯';
         },
       });
     }
@@ -188,12 +190,14 @@ export function DiffViewer({ file, position }: Props) {
             onClick={toggleHideReviewerComments}
             title={
               hideReviewerComments
-                ? `Show ${reviewerCountOnFile} bot/reviewer comment${reviewerCountOnFile === 1 ? '' : 's'} on this file`
-                : `Hide all bot/reviewer comments on the diff (still visible in Activity tab)`
+                ? `Show ${reviewerCountOnFile} review comment${reviewerCountOnFile === 1 ? '' : 's'} (bots + humans) on this file`
+                : `Hide review comments (bots + humans) on the diff. Still visible in the Activity tab.`
             }
           >
-            <span className="blame-toggle-icon">🤖</span>
-            <span>{hideReviewerComments ? 'Bots off' : `Bots ${reviewerCountOnFile}`}</span>
+            <span className="blame-toggle-icon">💬</span>
+            <span>
+              {hideReviewerComments ? 'Reviews hidden' : `Reviews ${reviewerCountOnFile}`}
+            </span>
           </button>
         )}
         {noiseHunkCount > 0 && (

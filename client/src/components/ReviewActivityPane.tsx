@@ -89,7 +89,7 @@ export function ReviewActivityPane() {
             checked={hideAll}
             onChange={toggleHideAll}
           />
-          Hide bot comments in diff
+          Hide review comments in diff
         </label>
       </div>
       {inline.length > 0 && (
