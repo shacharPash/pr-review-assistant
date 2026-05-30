@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../state/store.js';
 
 /** Atlassian Jira logo — official two-tone blue chevron mark. */
@@ -32,6 +32,20 @@ function JiraIcon({ size = 14 }: { size?: number }) {
 export function JiraBadge() {
   const bundle = useStore((s) => s.bundle);
   const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  // Close the popover on any click that lands outside the badge. The previous
+  // `onMouseLeave` approach unmounted the popover the moment the cursor
+  // crossed the 6px gap between the button and the popover, so the user
+  // could never actually click the link inside.
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (!wrapRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
 
   if (!bundle) return null;
   const tickets = bundle.jira?.tickets ?? [];
@@ -43,7 +57,7 @@ export function JiraBadge() {
     const guessed = guessJiraKey(bundle.meta.title, bundle.meta.body, bundle.commitMessages);
     if (!guessed) return null;
     return (
-      <div className={`jira-badge unconfigured ${open ? 'open' : ''}`} onMouseLeave={() => setOpen(false)}>
+      <div className={`jira-badge unconfigured ${open ? 'open' : ''}`} ref={wrapRef}>
         <button
           type="button"
           className="jira-badge-btn ghost"
@@ -61,12 +75,11 @@ export function JiraBadge() {
 
   const first = tickets[0];
   return (
-    <div className={`jira-badge ${open ? 'open' : ''}`} onMouseLeave={() => setOpen(false)}>
+    <div className={`jira-badge ${open ? 'open' : ''}`} ref={wrapRef}>
       <button
         type="button"
         className="jira-badge-btn"
         onClick={() => setOpen((v) => !v)}
-        onMouseEnter={() => setOpen(true)}
         title="Jira context"
       >
         <JiraIcon />
