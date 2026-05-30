@@ -1,32 +1,14 @@
 import { Router, type Request, type Response } from 'express';
 import { ClaudeRunner } from '../services/claudeRunner.js';
 import { getBundle, getHeadline, setHeadline } from '../services/cache.js';
-import { sanitizeSingleSentence } from '../services/sanitizeOneShot.js';
 
 export const headlineRouter = Router();
 
-const HEADLINE_PROMPT = `Output a one-sentence summary of this pull request (max ~140 characters).
-
-ABSOLUTE OUTPUT RULES — read carefully:
-- Output ONLY the sentence itself. No prefix, no suffix, no commentary.
-- Do NOT say "Let me write...", "Here's...", "The PR is...", "Sure,", etc.
-- Do NOT mention the character count, word count, or that you trimmed anything.
-- Do NOT add any second sentence, even to clarify or expand.
-- Do NOT use bullets, headers, code fences, or markdown.
-
-CONTENT RULES:
-- Lead with the user-visible behavior change or the bug being fixed.
-- No function names, no file paths, no class names.
-- If the PR is genuinely a dependency bump or trivial cleanup, say so plainly.
-
-Example of a GOOD response:
-Fixes Vercel marketplace resources stuck on "suspended" after an overdue invoice is paid, by pushing live status updates to Vercel.
-
-Example of a BAD response (do not do this):
-This is a clear, well-described PR. Let me write the summary. Fixes Vercel marketplace resources... That's 138 characters.`;
-
-// Shared sanitizer lives in services/sanitizeOneShot.ts so the Tweet
-// route can use the exact same rules.
+const HEADLINE_PROMPT = `Write a one-sentence (max ~140 characters) summary of this pull request,
+aimed at a teammate who hasn't seen it yet. Lead with the user-visible
+behavior change or the bug being fixed — not the implementation. NO function
+names, NO file paths, NO bullet, NO preamble. Just the sentence. If the PR
+genuinely is just a dependency bump or trivial cleanup, say so plainly.`;
 
 headlineRouter.get('/api/headline/stream', (req: Request, res: Response) => {
   const owner = String(req.query.owner ?? '');
@@ -72,18 +54,10 @@ headlineRouter.get('/api/headline/stream', (req: Request, res: Response) => {
     return;
   }
 
-  // We buffer the whole response instead of streaming chunks. The headline
-  // is one short sentence, and Claude often opens with "Let me write..."
-  // chain-of-thought that streams visibly before we can sanitize it.
-  // Buffering lets us strip the leak before the user sees anything.
   const runner = new ClaudeRunner({
-    onChunk: () => {
-      /* swallow; we only deliver the sanitized full text on done */
-    },
+    onChunk: (delta) => send('chunk', delta),
     onDone: (full) => {
-      const clean = sanitizeSingleSentence(full);
-      setHeadline(owner, repo, number, headSha, clean);
-      send('chunk', clean);
+      setHeadline(owner, repo, number, headSha, full.trim());
       send('done', '');
       res.end();
     },
