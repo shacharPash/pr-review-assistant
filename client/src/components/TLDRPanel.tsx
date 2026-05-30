@@ -124,9 +124,19 @@ function BriefTab({
     );
   }
   if (tldr.status === 'streaming') {
+    if (!tldr.text) {
+      return (
+        <div className="tldr-skeleton" aria-label="Generating brief">
+          <div className="skel-row" style={{ width: '88%' }} />
+          <div className="skel-row" style={{ width: '74%' }} />
+          <div className="skel-row" style={{ width: '92%' }} />
+          <div className="skel-row" style={{ width: '64%' }} />
+        </div>
+      );
+    }
     return (
       <div className="tldr-streaming-raw">
-        {tldr.text || 'Reading the diff…'}
+        {tldr.text}
         <span className="cursor" />
       </div>
     );

@@ -27,12 +27,19 @@ export function ReviewFooter() {
   const isDone = posting.status === 'done';
   const isError = posting.status === 'error';
 
+  // Color hint: when there are comments, lean red (suggests changes);
+  // when there are none, lean green (suggests approve). Neutral while
+  // we don't know intent.
+  const ctaTone = totalNotes === 0 ? 'approve' : 'changes';
+
   if (!expanded && !isDone && !isError) {
     return (
-      <button className="review-cta" onClick={() => setExpanded(true)}>
-        <span className="review-cta-emoji">📝</span>
+      <button className={`review-cta tone-${ctaTone}`} onClick={() => setExpanded(true)}>
+        <span className="review-cta-emoji">{totalNotes === 0 ? '✅' : '📝'}</span>
         <span className="review-cta-text">
-          {totalNotes === 0 ? 'Submit your review' : `Submit review (${totalNotes} comment${totalNotes === 1 ? '' : 's'})`}
+          {totalNotes === 0
+            ? 'Ready to approve →'
+            : `Submit review (${totalNotes} comment${totalNotes === 1 ? '' : 's'})`}
         </span>
         <span className="review-cta-arrow">→</span>
       </button>

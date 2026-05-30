@@ -119,8 +119,8 @@ export function DiffViewer({ file, position }: Props) {
 
     commentEditor.updateOptions({
       lineNumbers: modifiedLineNumbers,
-      // Date(10) + " " + author(14) + " " + lineNum(4) = 30 chars exactly.
-      lineNumbersMinChars: blameFn ? 30 : 4,
+      // Date(10) + 2-space sep + author(14) + 2-space sep + lineNum(4) = 32.
+      lineNumbersMinChars: blameFn ? 32 : 4,
     });
 
     if (otherEditor) {
@@ -251,7 +251,11 @@ export function DiffViewer({ file, position }: Props) {
           />
         </div>
       )}
-      <InlineCommentsLayer editor={commentEditor} filePath={file.path} />
+      <InlineCommentsLayer
+        editor={commentEditor}
+        filePath={file.path}
+        newLineMap={hasFull ? undefined : newLineMap}
+      />
       <BlameHoverProvider
         editor={commentEditor}
         ranges={hasFull && blameEntry?.status === 'ready' ? blameEntry.ranges : null}
@@ -292,28 +296,52 @@ const editorOptions = {
  */
 const BLAME_AUTHOR_WIDTH = 14;
 const BLAME_LINENUM_WIDTH = 4;
-const BLAME_EMPTY_DATE = ' '.repeat(10);
-const BLAME_EMPTY_AUTHOR = ' '.repeat(BLAME_AUTHOR_WIDTH);
+// Non-breaking spaces — HTML collapses runs of regular spaces, which made the
+// columns shift visually depending on name length. NBSP keeps every column at
+// the exact same pixel position regardless of how short or long the name is.
+const NBSP = ' ';
+const BLAME_EMPTY_DATE = NBSP.repeat(10);
+const BLAME_EMPTY_AUTHOR = NBSP.repeat(BLAME_AUTHOR_WIDTH);
+const BLAME_SEP = NBSP.repeat(2);
 
 function makeBlameLineNumbers(ranges: BlameRange[]): (n: number) => string {
   return (n: number) => {
     const r = ranges.find((x) => n >= x.startingLine && n <= x.endingLine);
-    const lineNum = String(n).padStart(BLAME_LINENUM_WIDTH);
-    if (!r) return `${BLAME_EMPTY_DATE} ${BLAME_EMPTY_AUTHOR} ${lineNum}`;
+    const lineNum = String(n).padStart(BLAME_LINENUM_WIDTH, NBSP);
+    if (!r) return `${BLAME_EMPTY_DATE}${BLAME_SEP}${BLAME_EMPTY_AUTHOR}${BLAME_SEP}${lineNum}`;
     const date = formatBlameDate(r.authoredDate); // 10 chars
-    const who = padOrTruncate(
-      r.authorLogin || r.authorName || '?',
-      BLAME_AUTHOR_WIDTH,
-    );
-    // 10 + 1 + 14 + 1 + 4 = 30 chars total.
-    return `${date} ${who} ${lineNum}`;
+    const who = shortAuthorPadded(r.authorName, r.authorLogin, BLAME_AUTHOR_WIDTH);
+    // 10 + 2 + 14 + 2 + 4 = 32 chars total.
+    return `${date}${BLAME_SEP}${who}${BLAME_SEP}${lineNum}`;
   };
 }
 
-function padOrTruncate(text: string, width: number): string {
-  if (text.length === width) return text;
-  if (text.length < width) return text.padEnd(width);
-  return text.slice(0, width - 2) + '..';
+/**
+ * Picks the most readable short label for the author. Prefers the LAST
+ * token of the commit's full name ("Shay Berman" → "Berman") so the
+ * gutter shows IntelliJ-style surnames instead of long GitHub handles.
+ * Falls back to the full name, then the login. LEFT-aligns the result so
+ * the name always starts at the same column (right side may vary, which is
+ * fine — IntelliJ does the same).
+ */
+function shortAuthorPadded(name: string | null, login: string | null, width: number): string {
+  let label = '?';
+  if (name && name.trim()) {
+    const parts = name.trim().split(/\s+/).filter((p) => p.length > 0);
+    // Use the last token if it's reasonably "name-like" (≥ 2 chars and not
+    // obviously a suffix like "Jr").
+    const last = parts[parts.length - 1];
+    if (last && last.length >= 2 && !/^(jr|sr|iii?|iv)\.?$/i.test(last)) {
+      label = last;
+    } else {
+      label = name.trim();
+    }
+  } else if (login) {
+    label = login;
+  }
+  if (label.length === width) return label;
+  if (label.length < width) return label.padEnd(width, NBSP);
+  return label.slice(0, width - 2) + '..';
 }
 
 function formatBlameDate(iso: string): string {
@@ -330,14 +358,20 @@ function formatBlameDate(iso: string): string {
  * Returns a CSS class name; the CSS rule on each class sets the
  * background of the line-number gutter via `lineNumberClassName`.
  */
+/**
+ * Calibrated to match IntelliJ's blame coloring on real repos:
+ * recent commits read GREEN, multi-year-old code reads BROWN-RED. The
+ * fresh tier (≤ 90 days) marks "this PR's work" prominently; the
+ * ancient tier (7y+) is the deepest red.
+ */
 function ageBucketClass(iso: string): string {
   const ts = new Date(iso).getTime();
   if (Number.isNaN(ts)) return 'blame-age-unknown';
   const days = (Date.now() - ts) / 86_400_000;
-  if (days < 30)    return 'blame-age-fresh';
-  if (days < 180)   return 'blame-age-recent';
-  if (days < 365)   return 'blame-age-moderate';
-  if (days < 365 * 3) return 'blame-age-old';
+  if (days < 90)        return 'blame-age-fresh';
+  if (days < 365)       return 'blame-age-recent';
+  if (days < 365 * 3)   return 'blame-age-moderate';
+  if (days < 365 * 7)   return 'blame-age-old';
   return 'blame-age-ancient';
 }
 

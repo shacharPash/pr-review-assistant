@@ -23,6 +23,15 @@ export interface LineComment {
 
 export type TLDRTab = 'brief' | PersonaId;
 
+export type ScopeKind = 'all' | 'commit' | 'since-review';
+
+export interface SelectedScope {
+  kind: ScopeKind;
+  label: string;          // human-readable: "All commits", "abc1234 — fix foo", "Since your last review"
+  commitSha?: string;     // for kind='commit'
+  baseSha?: string;       // for kind='since-review' (the previous head we reviewed at)
+}
+
 interface State {
   bundle: PRBundle | null;
   activeFilePath: string | null;
@@ -49,7 +58,15 @@ interface State {
   composerTarget: { path: string; line: number; startLine: number } | null;
   reviewSummary: string;
   postingReview: { status: 'idle' | 'posting' | 'done' | 'error'; message?: string; url?: string };
+  /** Active scope filter. 'all' = show full PR. */
+  scope: SelectedScope;
+  /** When set, replaces bundle.files for display. null = use bundle.files. */
+  scopedFiles: DiffFile[] | null;
+  scopeLoading: boolean;
+  /** SHA we last successfully posted a review at, per (owner/repo#number). null when none. */
+  lastReviewedSha: string | null;
   loadPR: (ref: string) => Promise<void>;
+  selectScope: (scope: SelectedScope) => Promise<void>;
   selectFile: (path: string) => void;
   toggleNoise: () => void;
   startTLDR: () => void;
@@ -85,6 +102,9 @@ function commentsStorageKey(headSha: string): string {
 }
 function lineCommentsStorageKey(headSha: string): string {
   return `pra.lineComments:${headSha}`;
+}
+function lastReviewedShaKey(owner: string, repo: string, number: number): string {
+  return `pra.lastReviewedSha:${owner}/${repo}#${number}`;
 }
 function readJSON<T>(key: string, fallback: T): T {
   if (typeof window === 'undefined') return fallback;
@@ -275,6 +295,14 @@ function openTLDRStream(bundle: PRBundle, set: (partial: Partial<State>) => void
   });
 }
 
+/**
+ * Returns the files currently visible — either the full PR (bundle.files)
+ * or a scoped subset selected by the commit picker.
+ */
+export function selectDisplayFiles(s: State): DiffFile[] {
+  return s.scopedFiles ?? s.bundle?.files ?? [];
+}
+
 export const useStore = create<State>((set, get) => ({
   bundle: null,
   activeFilePath: null,
@@ -294,6 +322,10 @@ export const useStore = create<State>((set, get) => ({
   composerTarget: null,
   reviewSummary: '',
   postingReview: { status: 'idle' },
+  scope: { kind: 'all', label: 'All commits' },
+  scopedFiles: null,
+  scopeLoading: false,
+  lastReviewedSha: null,
 
   async loadPR(ref) {
     set({
@@ -311,6 +343,10 @@ export const useStore = create<State>((set, get) => ({
       postingReview: { status: 'idle' },
       personaResults: {},
       activeTab: 'brief',
+      scope: { kind: 'all', label: 'All commits' },
+      scopedFiles: null,
+      scopeLoading: false,
+      lastReviewedSha: null,
     });
     try {
       const res = await fetch(`/api/pr?ref=${encodeURIComponent(ref)}`);
@@ -328,6 +364,10 @@ export const useStore = create<State>((set, get) => ({
         lineCommentsStorageKey(bundle.meta.headSha),
         {},
       );
+      const lastReviewedSha = readJSON<string | null>(
+        lastReviewedShaKey(bundle.meta.owner, bundle.meta.repo, bundle.meta.number),
+        null,
+      );
       set({
         bundle,
         activeFilePath: firstVisible?.path ?? null,
@@ -335,6 +375,7 @@ export const useStore = create<State>((set, get) => ({
         reviewed,
         comments,
         lineComments,
+        lastReviewedSha,
       });
       openTLDRStream(bundle, set);
       openHeadlineStream(bundle, set);
@@ -347,6 +388,56 @@ export const useStore = create<State>((set, get) => ({
       }
     } catch (err) {
       set({ loading: false, error: { message: (err as Error).message } });
+    }
+  },
+
+  async selectScope(scope) {
+    const { bundle } = get();
+    if (!bundle) return;
+
+    if (scope.kind === 'all') {
+      set({ scope, scopedFiles: null, scopeLoading: false });
+      const firstVisible = bundle.files.find((f) => !f.noise) ?? bundle.files[0];
+      if (firstVisible) set({ activeFilePath: firstVisible.path });
+      return;
+    }
+
+    set({ scope, scopeLoading: true });
+    try {
+      const params = new URLSearchParams({
+        owner: bundle.meta.owner,
+        repo: bundle.meta.repo,
+        number: String(bundle.meta.number),
+        headSha: bundle.meta.headSha,
+      });
+      if (scope.kind === 'commit') {
+        if (!scope.commitSha) throw new Error('commitSha required');
+        params.set('kind', 'commit');
+        params.set('commit', scope.commitSha);
+      } else {
+        // 'since-review' uses range from lastReviewedSha → headSha
+        if (!scope.baseSha) throw new Error('baseSha required for since-review');
+        params.set('kind', 'range');
+        params.set('base', scope.baseSha);
+      }
+      const res = await fetch(`/api/pr/scoped-diff?${params}`);
+      const data = await res.json();
+      if (!res.ok) {
+        set({
+          scopeLoading: false,
+          error: { message: data.error ?? 'Failed to scope diff', detail: data.detail },
+        });
+        return;
+      }
+      const files = data.files as DiffFile[];
+      const firstVisible = files.find((f) => !f.noise) ?? files[0];
+      set({
+        scopedFiles: files,
+        scopeLoading: false,
+        activeFilePath: firstVisible?.path ?? null,
+      });
+    } catch (err) {
+      set({ scopeLoading: false, error: { message: (err as Error).message } });
     }
   },
 
@@ -572,8 +663,13 @@ export const useStore = create<State>((set, get) => ({
         });
         return;
       }
+      writeJSON(
+        lastReviewedShaKey(bundle.meta.owner, bundle.meta.repo, bundle.meta.number),
+        bundle.meta.headSha,
+      );
       set({
         postingReview: { status: 'done', message: 'Posted.', url: data.url },
+        lastReviewedSha: bundle.meta.headSha,
       });
     } catch (err) {
       set({ postingReview: { status: 'error', message: (err as Error).message } });

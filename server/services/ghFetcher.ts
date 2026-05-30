@@ -63,7 +63,13 @@ interface GHViewJSON {
   baseRefOid: string;
   url: string;
   state: string;
-  commits: { messageHeadline: string; messageBody: string }[];
+  commits: {
+    oid: string;
+    messageHeadline: string;
+    messageBody: string;
+    committedDate?: string;
+    authors?: { login?: string | null; name?: string | null }[];
+  }[];
 }
 
 export interface PRRefWithSha extends ParsedRef {
@@ -86,6 +92,9 @@ export async function fetchPR(input: string): Promise<PRBundle> {
   const repoSlug = `${ref.owner}/${ref.repo}`;
   const viewFields =
     'number,title,body,author,headRefOid,baseRefOid,url,state,commits';
+  // gh's --json commits gives an array with oid, messageHeadline, messageBody,
+  // committedDate, and authors (each with login + name) — that's enough to
+  // populate our PRCommit[].
 
   const [viewJSONRaw, diffRaw] = await Promise.all([
     runGH(['pr', 'view', String(ref.number), '--repo', repoSlug, '--json', viewFields]),
@@ -111,10 +120,17 @@ export async function fetchPR(input: string): Promise<PRBundle> {
   const commitMessages = view.commits.map((c) =>
     c.messageBody ? `${c.messageHeadline}\n\n${c.messageBody}` : c.messageHeadline,
   );
+  const commits = view.commits.map((c) => ({
+    oid: c.oid,
+    short: c.oid.slice(0, 7),
+    message: c.messageHeadline,
+    author: c.authors?.[0]?.login || c.authors?.[0]?.name || meta.author,
+    authoredAt: c.committedDate ?? new Date().toISOString(),
+  }));
 
   const jira = await collectJira(meta.title, meta.body ?? '', commitMessages);
 
-  return { meta, files, commitMessages, jira };
+  return { meta, files, commitMessages, commits, jira };
 }
 
 async function collectJira(

@@ -7,6 +7,13 @@ interface Props {
   /** The modified-side editor (or the single editor for new/deleted files). */
   editor: MonacoEditor.ICodeEditor | null;
   filePath: string;
+  /**
+   * Map from Monaco line number → real file line on the modified side.
+   * When noise is hidden, Monaco shows fewer lines than the file has,
+   * so we must translate between the two coordinate systems for storage
+   * (real lines) and placement (Monaco lines). Empty / undefined = identity.
+   */
+  newLineMap?: number[];
 }
 
 interface ZoneEntry {
@@ -23,7 +30,19 @@ interface ZoneEntry {
  * - A view zone for the open composer
  * Comments are stored in the global store; this component is pure UI.
  */
-export function InlineCommentsLayer({ editor, filePath }: Props) {
+export function InlineCommentsLayer({ editor, filePath, newLineMap }: Props) {
+  // Translation helpers — both default to identity when no map is provided
+  // (full-file mode, where Monaco lines === real file lines).
+  const monacoToReal = (monacoLine: number): number => {
+    if (!newLineMap?.length) return monacoLine;
+    const real = newLineMap[monacoLine - 1];
+    return real && real > 0 ? real : monacoLine;
+  };
+  const realToMonaco = (realLine: number): number => {
+    if (!newLineMap?.length) return realLine;
+    const idx = newLineMap.indexOf(realLine);
+    return idx >= 0 ? idx + 1 : realLine;
+  };
   const lineComments = useStore((s) => s.lineComments[filePath] ?? {});
   const composerTarget = useStore((s) => s.composerTarget);
   const openComposer = useStore((s) => s.openComposer);
@@ -115,7 +134,7 @@ export function InlineCommentsLayer({ editor, filePath }: Props) {
       const start = Math.min(dragAnchorLine, dragEndLine);
       const end = Math.max(dragAnchorLine, dragEndLine);
       clearDragDecorations();
-      openComposer(filePath, start, end);
+      openComposer(filePath, monacoToReal(start), monacoToReal(end));
       e.preventDefault();
       e.stopPropagation();
     };
@@ -130,7 +149,7 @@ export function InlineCommentsLayer({ editor, filePath }: Props) {
         const startLine = Math.min(selection.startLineNumber, selection.endLineNumber);
         const endLine = Math.max(selection.startLineNumber, selection.endLineNumber);
         // Don't start a drag — open composer for the existing selection.
-        openComposer(filePath, startLine, endLine);
+        openComposer(filePath, monacoToReal(startLine), monacoToReal(endLine));
         return;
       }
       dragging = true;
@@ -231,8 +250,11 @@ export function InlineCommentsLayer({ editor, filePath }: Props) {
         node.addEventListener('click', stop);
         node.addEventListener('wheel', stop);
         node.addEventListener('keydown', stop);
+        // w.line is a REAL file line (storage coord). Convert to Monaco line
+        // for placement so the zone appears at the visible row, regardless
+        // of whether noise is hidden.
         const id = accessor.addZone({
-          afterLineNumber: w.line,
+          afterLineNumber: realToMonaco(w.line),
           heightInPx: w.kind === 'composer' ? 260 : 150,
           domNode: node,
         });
@@ -248,12 +270,17 @@ export function InlineCommentsLayer({ editor, filePath }: Props) {
     };
   }, [editor, JSON.stringify(Object.keys(lineComments)), composerTarget?.line, composerTarget?.path, filePath]);
 
+  // Accepts REAL file lines and reads the corresponding rows from Monaco's
+  // model, translating real → Monaco internally so suggestion/AI helpers
+  // pick up the right source even when noise is hidden.
   const readOriginalLines = (startLine: number, endLine: number): string => {
     if (!editor) return '';
     const model = editor.getModel();
     if (!model) return '';
-    const a = Math.max(1, Math.min(startLine, endLine));
-    const b = Math.min(model.getLineCount(), Math.max(startLine, endLine));
+    const monacoStart = realToMonaco(Math.min(startLine, endLine));
+    const monacoEnd = realToMonaco(Math.max(startLine, endLine));
+    const a = Math.max(1, Math.min(monacoStart, monacoEnd));
+    const b = Math.min(model.getLineCount(), Math.max(monacoStart, monacoEnd));
     const lines: string[] = [];
     for (let i = a; i <= b; i++) lines.push(model.getLineContent(i));
     return lines.join('\n');

@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { useStore } from '../state/store.js';
+import { useStore, selectDisplayFiles } from '../state/store.js';
 import { usePrefs } from '../state/preferences.js';
 import { FileSidebar } from './FileSidebar.js';
 import { DiffViewer } from './DiffViewer.js';
@@ -13,20 +13,21 @@ export function PRView() {
   const error = useStore((s) => s.error);
   const activePath = useStore((s) => s.activeFilePath);
   const showNoise = useStore((s) => s.showNoise);
+  const files = useStore(selectDisplayFiles);
   const tldrHeight = usePrefs((s) => s.tldrHeight);
   const tldrCollapsed = usePrefs((s) => s.tldrCollapsed);
   const railWidth = usePrefs((s) => s.railWidth);
 
   const { activeFile, position } = useMemo(() => {
     if (!bundle) return { activeFile: null, position: null };
-    const visible = bundle.files.filter((f) => showNoise || !f.noise);
+    const visible = files.filter((f) => showNoise || !f.noise);
     const idx = visible.findIndex((f) => f.path === activePath);
     if (idx < 0) return { activeFile: null, position: null };
     return {
       activeFile: visible[idx],
       position: { index: idx, total: visible.length },
     };
-  }, [bundle, activePath, showNoise]);
+  }, [bundle, files, activePath, showNoise]);
 
   if (error) {
     return (
