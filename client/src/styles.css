@@ -40,6 +40,7 @@ body {
 
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; margin: 0; }
+html, body { overflow: hidden; }  /* page never scrolls — internal containers do */
 body {
   background: var(--bg);
   color: var(--fg);
@@ -60,8 +61,10 @@ button { font: inherit; }
   display: grid;
   grid-template-rows: 52px auto auto 1fr;
   height: 100%;
+  width: 100%;
+  overflow: hidden;
 }
-.app > * { min-height: 0; }
+.app > * { min-height: 0; min-width: 0; }
 
 .header {
   display: flex;
