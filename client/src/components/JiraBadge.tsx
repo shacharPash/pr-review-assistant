@@ -49,28 +49,51 @@ export function JiraBadge() {
 
   if (!bundle) return null;
   const tickets = bundle.jira?.tickets ?? [];
+  const isConfigured = !!bundle.jira?.configured;
+  const failures = bundle.jira?.failures ?? [];
 
-  // No tickets known to the server. If we can spot a ticket-shaped key in
-  // the PR text anyway, show a "configure to enable" hint so the user knows
-  // why no link is appearing — clickable for the full setup instructions.
+  // No tickets to show. Three sub-cases:
+  //   1) Server is configured + we tried & failed → fetch-error chip
+  //   2) Server is NOT configured + PR text has a ticket-shaped key → "Set up" ghost
+  //   3) Otherwise → render nothing (no key detected = nothing to surface)
   if (tickets.length === 0) {
-    const guessed = guessJiraKey(bundle.meta.title, bundle.meta.body, bundle.commitMessages);
-    if (!guessed) return null;
-    return (
-      <div className={`jira-badge unconfigured ${open ? 'open' : ''}`} ref={wrapRef}>
-        <button
-          type="button"
-          className="jira-badge-btn ghost"
-          onClick={() => setOpen((v) => !v)}
-          title={`Found ${guessed} — click to set up Jira links`}
-        >
-          <JiraIcon />
-          <span className="jira-badge-key">{guessed}</span>
-          <span className="jira-badge-cta">Set up →</span>
-        </button>
-        {open && <JiraSetupPopover detectedKey={guessed} />}
-      </div>
-    );
+    if (isConfigured && failures.length > 0) {
+      const reasonLine = failures.map((f) => `${f.key}: ${f.reason}`).join('\n');
+      return (
+        <div className="jira-badge failed" title={`Jira fetch failed.\n${reasonLine}`}>
+          <span className="jira-badge-btn ghost" style={{ cursor: 'default' }}>
+            <JiraIcon />
+            <span className="jira-badge-key">{failures[0].key}</span>
+            <span className="jira-badge-cta" style={{ color: 'var(--removed, #d04545)' }}>
+              fetch failed
+            </span>
+          </span>
+        </div>
+      );
+    }
+
+    if (!isConfigured) {
+      const guessed = guessJiraKey(bundle.meta.title, bundle.meta.body, bundle.commitMessages);
+      if (!guessed) return null;
+      return (
+        <div className={`jira-badge unconfigured ${open ? 'open' : ''}`} ref={wrapRef}>
+          <button
+            type="button"
+            className="jira-badge-btn ghost"
+            onClick={() => setOpen((v) => !v)}
+            title={`Found ${guessed} — click to set up Jira links`}
+          >
+            <JiraIcon />
+            <span className="jira-badge-key">{guessed}</span>
+            <span className="jira-badge-cta">Set up →</span>
+          </button>
+          {open && <JiraSetupPopover detectedKey={guessed} />}
+        </div>
+      );
+    }
+
+    // Configured + no keys detected in the PR → nothing to render.
+    return null;
   }
 
   const first = tickets[0];
