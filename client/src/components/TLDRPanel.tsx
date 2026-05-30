@@ -14,9 +14,12 @@ const KIND_TITLE: Record<Kind, string> = {
 
 type TabId = 'brief' | PersonaId;
 
+// Plain English first — it streams faster than Brief (which needs deeper
+// model reasoning to name specific files/risks) so the user gets readable
+// output sooner. Brief still pre-warms in the background.
 const TABS: { id: TabId; emoji: string; label: string }[] = [
-  { id: 'brief', emoji: '📌', label: 'Brief' },
   { id: 'explain', emoji: '💬', label: 'Plain English' },
+  { id: 'brief', emoji: '📌', label: 'Brief' },
   { id: 'checklist', emoji: '✅', label: 'Checklist' },
   { id: 'tweet', emoji: '🐦', label: 'Tweet' },
 ];
@@ -32,13 +35,16 @@ export function TLDRPanel() {
   const collapsed = usePrefs((s) => s.tldrCollapsed);
   const toggleTLDR = usePrefs((s) => s.toggleTLDR);
 
-  // Auto-trigger Explain, Checklist, and Tweet on first load — keeps brief active.
+  // Warm up all tabs on first load so they're ready when the user clicks
+  // between them. End on selectTab('explain') so Plain English is what
+  // they see first — it streams faster than Brief because the model
+  // doesn't need deep reasoning to write friendly prose.
   useEffect(() => {
     if (!bundle) return;
-    if (!personaResults.explain) selectTab('explain');
     if (!personaResults.checklist) selectTab('checklist');
     if (!personaResults.tweet) selectTab('tweet');
-    selectTab('brief');
+    if (!personaResults.explain) selectTab('explain');
+    selectTab('explain');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bundle?.meta?.headSha]);
 

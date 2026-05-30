@@ -342,7 +342,7 @@ export const useStore = create<State>((set, get) => ({
       comments: {},
       postingReview: { status: 'idle' },
       personaResults: {},
-      activeTab: 'brief',
+      activeTab: 'explain',
       scope: { kind: 'all', label: 'All commits' },
       scopedFiles: null,
       scopeLoading: false,
@@ -529,7 +529,7 @@ export const useStore = create<State>((set, get) => ({
     if (b) openTLDRStream(b, set);
   },
 
-  activeTab: 'brief',
+  activeTab: 'explain',
   personaResults: {},
 
   selectTab(tab) {
