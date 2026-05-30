@@ -77,26 +77,28 @@ loader.init().then((monaco) => {
       { token: 'constant', foreground: '4fc1ff' },
     ],
     colors: {
-      // Background pulled darker than authentic VS Code (#1e1e1e) so the
-      // editor doesn't look "raised/foggy" next to the app's #0d1117 chrome.
-      'editor.background': '#0e0e0e',
+      // Editor bg matches the app chrome so there's no fog/raised-panel
+      // effect when switching themes. The theme identity comes from the
+      // syntax token colors above, not the bg. Canonical VS Code Dark+ bg
+      // is #1e1e1e — sacrificed here for visual continuity with chrome.
+      'editor.background': '#07090c',
       'editor.foreground': '#e6e6e6',
       'editorLineNumber.foreground': '#a5a5a5',
       'editorLineNumber.activeForeground': '#ffffff',
       'editor.selectionBackground': '#264f78',
-      'editor.lineHighlightBackground': '#1a1a1a',
+      'editor.lineHighlightBackground': '#11141a',
       'editorCursor.foreground': '#cccccc',
-      'editorIndentGuide.background': '#2a2a2a',
-      'editorIndentGuide.activeBackground': '#5a5a5a',
-      'editorGutter.background': '#0e0e0e',
+      'editorIndentGuide.background': '#1a1f26',
+      'editorIndentGuide.activeBackground': '#3a3f46',
+      'editorGutter.background': '#07090c',
 
       'diffEditor.insertedLineBackground': '#9bb95530',
       'diffEditor.insertedTextBackground': '#9bb95550',
       'diffEditor.removedLineBackground': '#e54a4a30',
       'diffEditor.removedTextBackground': '#e54a4a50',
-      'diffEditor.diagonalFill': '#0e0e0e',
-      'diffEditor.border': '#2c2c2c',
-      'diffEditor.unchangedRegionBackground': '#161616',
+      'diffEditor.diagonalFill': '#07090c',
+      'diffEditor.border': '#2a3038',
+      'diffEditor.unchangedRegionBackground': '#11141a',
       'diffEditor.unchangedRegionForeground': '#7a7a7a',
     },
   });
@@ -150,10 +152,10 @@ loader.init().then((monaco) => {
     base: 'vs-dark',
     inherit: true,
     rules: [
-      // Bg pulled dark (#121316) so the editor matches the app chrome
-      // instead of feeling like a foggy raised panel. Tokens brightened
-      // for contrast.
-      { token: '', foreground: 'e8eaed', background: '121316' },
+      // Editor bg unified with app chrome (#07090c) for visual
+      // continuity. Token colors below are the authentic IntelliJ
+      // Darcula "New UI" palette so the THEME identity is preserved.
+      { token: '', foreground: 'e8eaed', background: '07090c' },
       { token: 'comment', foreground: '8a8e93', fontStyle: 'italic' },
       { token: 'keyword', foreground: 'd99964' },
       { token: 'string', foreground: '83c490' },
@@ -166,25 +168,25 @@ loader.init().then((monaco) => {
       { token: 'attribute.value', foreground: '83c490' },
     ],
     colors: {
-      'editor.background': '#121316',
+      'editor.background': '#07090c',
       'editor.foreground': '#e8eaed',
       'editorLineNumber.foreground': '#a8acb3',
       'editorLineNumber.activeForeground': '#ffffff',
       'editor.selectionBackground': '#2e436e',
-      'editor.lineHighlightBackground': '#1c1e23',
+      'editor.lineHighlightBackground': '#11141a',
       'editorCursor.foreground': '#d4d4d4',
-      'editorWhitespace.foreground': '#2a2c30',
-      'editorIndentGuide.background': '#21232a',
-      'editorIndentGuide.activeBackground': '#3a3d44',
-      'editorGutter.background': '#121316',
+      'editorWhitespace.foreground': '#21262d',
+      'editorIndentGuide.background': '#1a1f26',
+      'editorIndentGuide.activeBackground': '#3a3f46',
+      'editorGutter.background': '#07090c',
 
       'diffEditor.insertedLineBackground': '#2b4f3a30',
       'diffEditor.insertedTextBackground': '#3e7b4240',
       'diffEditor.removedLineBackground': '#5c2f2f30',
       'diffEditor.removedTextBackground': '#8b3a3a40',
-      'diffEditor.diagonalFill': '#121316',
-      'diffEditor.border': '#21232a',
-      'diffEditor.unchangedRegionBackground': '#1c1e23',
+      'diffEditor.diagonalFill': '#07090c',
+      'diffEditor.border': '#2a3038',
+      'diffEditor.unchangedRegionBackground': '#11141a',
       'diffEditor.unchangedRegionForeground': '#7a7e85',
 
       'editorOverviewRuler.modifiedForeground': '#57965caa',

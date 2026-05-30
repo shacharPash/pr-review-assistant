@@ -119,8 +119,8 @@ export function DiffViewer({ file, position }: Props) {
 
     commentEditor.updateOptions({
       lineNumbers: modifiedLineNumbers,
-      // Date(10) + " " + author(12) + " " + lineNum(4) = 28 chars exactly.
-      lineNumbersMinChars: blameFn ? 28 : 4,
+      // Date(10) + " " + author(14) + " " + lineNum(4) = 30 chars exactly.
+      lineNumbersMinChars: blameFn ? 30 : 4,
     });
 
     if (otherEditor) {
@@ -283,7 +283,14 @@ const editorOptions = {
  * Lines without a matching blame range still get padded so the gutter stays
  * the same width and Monaco doesn't truncate.
  */
-const BLAME_AUTHOR_WIDTH = 12;
+/**
+ * Author field width chosen to fit ~98% of real GitHub handles without
+ * truncation. Truncation uses ASCII ".." (not Unicode "…") because some
+ * monospace fonts render the single-char ellipsis at a different glyph
+ * width — that was causing rows with truncated names to shift by ~1px,
+ * breaking column alignment.
+ */
+const BLAME_AUTHOR_WIDTH = 14;
 const BLAME_LINENUM_WIDTH = 4;
 const BLAME_EMPTY_DATE = ' '.repeat(10);
 const BLAME_EMPTY_AUTHOR = ' '.repeat(BLAME_AUTHOR_WIDTH);
@@ -294,19 +301,19 @@ function makeBlameLineNumbers(ranges: BlameRange[]): (n: number) => string {
     const lineNum = String(n).padStart(BLAME_LINENUM_WIDTH);
     if (!r) return `${BLAME_EMPTY_DATE} ${BLAME_EMPTY_AUTHOR} ${lineNum}`;
     const date = formatBlameDate(r.authoredDate); // 10 chars
-    const who = padOrEllipsis(
+    const who = padOrTruncate(
       r.authorLogin || r.authorName || '?',
       BLAME_AUTHOR_WIDTH,
     );
-    // Single space separator between columns — 10 + 1 + 12 + 1 + 4 = 28 chars total.
+    // 10 + 1 + 14 + 1 + 4 = 30 chars total.
     return `${date} ${who} ${lineNum}`;
   };
 }
 
-function padOrEllipsis(text: string, width: number): string {
+function padOrTruncate(text: string, width: number): string {
   if (text.length === width) return text;
   if (text.length < width) return text.padEnd(width);
-  return text.slice(0, width - 1) + '…';
+  return text.slice(0, width - 2) + '..';
 }
 
 function formatBlameDate(iso: string): string {

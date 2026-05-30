@@ -51,8 +51,17 @@ export function PRView() {
     );
   }
 
+  // Clamp the rail to at most ~50% of the viewport so a wide rail set on a
+  // big screen doesn't squash the diff column when the user moves to a
+  // smaller one. The setter still allows the value to grow; this just
+  // caps what we APPLY for layout.
+  const maxRailForView = typeof window !== 'undefined'
+    ? Math.max(280, Math.floor(window.innerWidth * 0.5))
+    : railWidth;
+  const effectiveRail = Math.min(railWidth, maxRailForView);
+
   return (
-    <div className="main" style={{ gridTemplateColumns: `${railWidth}px 6px 1fr` }}>
+    <div className="main" style={{ gridTemplateColumns: `${effectiveRail}px 6px minmax(0, 1fr)` }}>
       <aside className="left-rail">
         <div
           className="tldr-slot"
