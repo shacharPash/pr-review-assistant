@@ -1197,6 +1197,90 @@ button { font: inherit; }
 .review-cta-text { flex: 1; text-align: left; }
 .review-cta-arrow { font-size: 16px; opacity: 0.85; }
 
+.review-cta-wrap { display: flex; flex-direction: column; }
+.review-peek-btn {
+  background: var(--bg-elev);
+  border: 0;
+  border-top: 1px solid var(--border);
+  color: var(--fg-dim);
+  padding: 6px 12px;
+  font-size: 11px;
+  cursor: pointer;
+  text-align: left;
+}
+.review-peek-btn:hover { color: var(--fg); background: var(--bg-card); }
+
+.pending-list {
+  max-height: 240px;
+  overflow-y: auto;
+  background: var(--bg-elev);
+  border-top: 1px solid var(--border-soft);
+}
+.pending-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border-soft);
+  font-size: 11px;
+  align-items: start;
+}
+.pending-item:last-child { border-bottom: 0; }
+.pending-jump {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  color: var(--fg);
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  overflow: hidden;
+}
+.pending-jump:hover { color: var(--accent); }
+.pending-kind { flex-shrink: 0; }
+.pending-path {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--fg-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pending-line {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--accent);
+  background: var(--accent-soft);
+  padding: 1px 5px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+.pending-body {
+  grid-column: 1 / 2;
+  color: var(--fg-dim);
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin-top: 2px;
+}
+.pending-delete {
+  grid-row: 1 / 3;
+  grid-column: 2 / 3;
+  background: transparent;
+  border: 0;
+  color: var(--fg-faint);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 4px;
+  border-radius: 3px;
+  align-self: start;
+}
+.pending-delete:hover { color: var(--removed, #f85149); background: rgba(248, 81, 73, 0.1); }
+
 .review-actions.big {
   grid-template-columns: 1fr 1fr 1fr;
   gap: 8px;

@@ -4,11 +4,54 @@ import { getBundle, getHeadline, setHeadline } from '../services/cache.js';
 
 export const headlineRouter = Router();
 
-const HEADLINE_PROMPT = `Write a one-sentence (max ~140 characters) summary of this pull request,
-aimed at a teammate who hasn't seen it yet. Lead with the user-visible
-behavior change or the bug being fixed — not the implementation. NO function
-names, NO file paths, NO bullet, NO preamble. Just the sentence. If the PR
-genuinely is just a dependency bump or trivial cleanup, say so plainly.`;
+const HEADLINE_PROMPT = `Output a one-sentence summary of this pull request (max ~140 characters).
+
+ABSOLUTE OUTPUT RULES — read carefully:
+- Output ONLY the sentence itself. No prefix, no suffix, no commentary.
+- Do NOT say "Let me write...", "Here's...", "The PR is...", "Sure,", etc.
+- Do NOT mention the character count, word count, or that you trimmed anything.
+- Do NOT add any second sentence, even to clarify or expand.
+- Do NOT use bullets, headers, code fences, or markdown.
+
+CONTENT RULES:
+- Lead with the user-visible behavior change or the bug being fixed.
+- No function names, no file paths, no class names.
+- If the PR is genuinely a dependency bump or trivial cleanup, say so plainly.
+
+Example of a GOOD response:
+Fixes Vercel marketplace resources stuck on "suspended" after an overdue invoice is paid, by pushing live status updates to Vercel.
+
+Example of a BAD response (do not do this):
+This is a clear, well-described PR. Let me write the summary. Fixes Vercel marketplace resources... That's 138 characters.`;
+
+/** Strips Claude's chain-of-thought leaks ("Let me write...", "That's N characters") that occasionally slip past the prompt. */
+function sanitizeHeadline(raw: string): string {
+  let text = raw.trim();
+
+  // Drop common preamble openers up to (but not including) the real first sentence.
+  // Loop because Claude sometimes stacks two preambles ("OK. Let me write the summary. Fixes…").
+  const preambleRe = /^(?:(?:sure[,!.]|okay?[,!.]|alright[,!.]|here(?:'s|s)\s+(?:the|a|my)\s+(?:summary|one[- ]sentence(?:r| summary)?|sentence|tweet|headline)[:.]?|(?:let me|i(?:'ll| will))\s+(?:write|draft|give|provide|put together)\s+(?:the|a|my)?\s*(?:summary|one[- ]sentence(?:r| summary)?|sentence|tweet|headline)[:.]?|this\s+(?:is\s+a|pr\s+(?:is|has))[^.]*\.|the\s+pr\s+(?:is|has|describes|covers)[^.]*\.|i'll\s+keep\s+it[^.]*\.|got it[,!.]?))\s*/i;
+  for (let i = 0; i < 4 && preambleRe.test(text); i++) {
+    text = text.replace(preambleRe, '').trimStart();
+  }
+
+  // Strip trailing meta about character count / trimming, including any "let me trim" follow-ups.
+  text = text
+    .replace(/\s*(?:[—-]+\s*)?that(?:'s|s)?\s+\d+\s+(?:char(?:acter)?s?|words?)[^.]*\.?\s*$/i, '')
+    .replace(/\s*let me trim[^.]*\.?\s*$/i, '')
+    .replace(/\s*\(\s*\d+\s+(?:char(?:acter)?s?|words?)\s*\)\s*$/i, '')
+    .trim();
+
+  // If Claude wrote two sentences, keep only the first (cap at the first sentence-ending period).
+  // We treat ". " as a sentence boundary; we DO keep periods inside abbreviations because
+  // we also require the next char to be a capital letter or end-of-string.
+  const sentenceEnd = text.search(/\.\s+[A-Z]/);
+  if (sentenceEnd > 0 && sentenceEnd < text.length - 2) {
+    text = text.slice(0, sentenceEnd + 1);
+  }
+
+  return text.trim();
+}
 
 headlineRouter.get('/api/headline/stream', (req: Request, res: Response) => {
   const owner = String(req.query.owner ?? '');
@@ -54,10 +97,18 @@ headlineRouter.get('/api/headline/stream', (req: Request, res: Response) => {
     return;
   }
 
+  // We buffer the whole response instead of streaming chunks. The headline
+  // is one short sentence, and Claude often opens with "Let me write..."
+  // chain-of-thought that streams visibly before we can sanitize it.
+  // Buffering lets us strip the leak before the user sees anything.
   const runner = new ClaudeRunner({
-    onChunk: (delta) => send('chunk', delta),
+    onChunk: () => {
+      /* swallow; we only deliver the sanitized full text on done */
+    },
     onDone: (full) => {
-      setHeadline(owner, repo, number, headSha, full.trim());
+      const clean = sanitizeHeadline(full);
+      setHeadline(owner, repo, number, headSha, clean);
+      send('chunk', clean);
       send('done', '');
       res.end();
     },

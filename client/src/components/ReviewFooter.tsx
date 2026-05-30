@@ -4,6 +4,14 @@ import { SlackNotify } from './SlackNotify.js';
 
 type Event = 'APPROVE' | 'COMMENT' | 'REQUEST_CHANGES';
 
+interface PendingComment {
+  path: string;
+  line?: number;
+  startLine?: number;
+  body: string;
+  kind: 'inline' | 'file';
+}
+
 export function ReviewFooter() {
   const lineComments = useStore((s) => s.lineComments);
   const comments = useStore((s) => s.comments);
@@ -12,16 +20,37 @@ export function ReviewFooter() {
   const posting = useStore((s) => s.postingReview);
   const postReview = useStore((s) => s.postReview);
   const bundle = useStore((s) => s.bundle);
+  const selectFile = useStore((s) => s.selectFile);
+  const removeLineComment = useStore((s) => s.removeLineComment);
+  const setComment = useStore((s) => s.setComment);
   const [expanded, setExpanded] = useState(false);
+  const [reviewing, setReviewing] = useState(false);
 
   if (!bundle) return null;
 
-  const inlineCount = Object.values(lineComments).reduce(
-    (n, perFile) => n + Object.values(perFile).filter((v) => v?.body?.trim()).length,
-    0,
-  );
-  const fileNoteCount = Object.values(comments).filter((c) => c?.trim()).length;
-  const totalNotes = inlineCount + fileNoteCount;
+  // Flatten all pending comments so we can both count them accurately AND
+  // show the user exactly where each one lives — fixes the "1 comment but
+  // I can't find it" puzzle when an entry survives from a previous PR.
+  const pending: PendingComment[] = [];
+  for (const [path, perLine] of Object.entries(lineComments)) {
+    for (const [lineStr, entry] of Object.entries(perLine)) {
+      if (entry?.body?.trim()) {
+        pending.push({
+          path,
+          line: Number(lineStr),
+          startLine: entry.startLine,
+          body: entry.body,
+          kind: 'inline',
+        });
+      }
+    }
+  }
+  for (const [path, body] of Object.entries(comments)) {
+    if (body?.trim()) pending.push({ path, body, kind: 'file' });
+  }
+  const inlineCount = pending.filter((p) => p.kind === 'inline').length;
+  const fileNoteCount = pending.filter((p) => p.kind === 'file').length;
+  const totalNotes = pending.length;
 
   const isPosting = posting.status === 'posting';
   const isDone = posting.status === 'done';
@@ -34,15 +63,36 @@ export function ReviewFooter() {
 
   if (!expanded && !isDone && !isError) {
     return (
-      <button className={`review-cta tone-${ctaTone}`} onClick={() => setExpanded(true)}>
-        <span className="review-cta-emoji">{totalNotes === 0 ? '✅' : '📝'}</span>
-        <span className="review-cta-text">
-          {totalNotes === 0
-            ? 'Ready to approve →'
-            : `Submit review (${totalNotes} comment${totalNotes === 1 ? '' : 's'})`}
-        </span>
-        <span className="review-cta-arrow">→</span>
-      </button>
+      <div className="review-cta-wrap">
+        <button className={`review-cta tone-${ctaTone}`} onClick={() => setExpanded(true)}>
+          <span className="review-cta-emoji">{totalNotes === 0 ? '✅' : '📝'}</span>
+          <span className="review-cta-text">
+            {totalNotes === 0
+              ? 'Ready to approve →'
+              : `Submit review (${totalNotes} comment${totalNotes === 1 ? '' : 's'})`}
+          </span>
+          <span className="review-cta-arrow">→</span>
+        </button>
+        {totalNotes > 0 && (
+          <button
+            className="review-peek-btn"
+            onClick={() => setReviewing((v) => !v)}
+            title="Show my pending comments"
+          >
+            {reviewing ? '▾' : '▸'} {totalNotes} pending
+          </button>
+        )}
+        {reviewing && totalNotes > 0 && (
+          <PendingList
+            pending={pending}
+            onJump={(path) => selectFile(path)}
+            onDelete={(p) => {
+              if (p.kind === 'inline' && p.line != null) removeLineComment(p.path, p.line);
+              else setComment(p.path, '');
+            }}
+          />
+        )}
+      </div>
     );
   }
 
@@ -114,6 +164,48 @@ export function ReviewFooter() {
           <SlackNotify />
         </div>
       )}
+    </div>
+  );
+}
+
+function PendingList({
+  pending,
+  onJump,
+  onDelete,
+}: {
+  pending: PendingComment[];
+  onJump: (path: string) => void;
+  onDelete: (p: PendingComment) => void;
+}) {
+  return (
+    <div className="pending-list">
+      {pending.map((p, i) => {
+        const lineLabel =
+          p.kind === 'inline'
+            ? p.startLine && p.startLine !== p.line
+              ? `L${p.startLine}–${p.line}`
+              : `L${p.line}`
+            : 'file';
+        const shortPath = p.path.split('/').slice(-2).join('/');
+        return (
+          <div key={`${p.kind}:${p.path}:${p.line ?? 'file'}:${i}`} className="pending-item">
+            <button className="pending-jump" onClick={() => onJump(p.path)} title={p.path}>
+              <span className="pending-kind">{p.kind === 'inline' ? '💬' : '📄'}</span>
+              <span className="pending-path">{shortPath}</span>
+              <span className="pending-line">{lineLabel}</span>
+            </button>
+            <div className="pending-body">{p.body.trim().slice(0, 140)}{p.body.length > 140 && '…'}</div>
+            <button
+              className="pending-delete"
+              onClick={() => onDelete(p)}
+              title="Discard this comment"
+              aria-label="Discard comment"
+            >
+              ✕
+            </button>
+          </div>
+        );
+      })}
     </div>
   );
 }
