@@ -69,5 +69,8 @@ explainRouter.get('/api/explain/stream', (req: Request, res: Response) => {
   });
 
   req.on('close', () => runner.abort());
-  runner.start(bundle, { systemPrompt: persona.prompt });
+  // Short-form personas (tweet, plain-english, checklist) don't need deep
+  // code reasoning — Sonnet is plenty and 2-3× faster than the user's
+  // default (often Opus). Keeps the TLDR panel feeling responsive.
+  runner.start(bundle, { systemPrompt: persona.prompt, model: 'sonnet' });
 });
