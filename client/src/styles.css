@@ -59,12 +59,71 @@ button { font: inherit; }
 
 .app {
   display: grid;
-  grid-template-rows: 52px auto auto 1fr;
+  /* header · health-banner (often empty) · summary card · resizer · diff area */
+  grid-template-rows: 52px auto auto auto 1fr;
   height: 100%;
   width: 100%;
   overflow: hidden;
 }
 .app > * { min-height: 0; min-width: 0; }
+
+/* ----- Health / setup banner ------------------------------------------ */
+.health-banner {
+  background: rgba(248, 81, 73, 0.08);
+  border-bottom: 1px solid rgba(248, 81, 73, 0.35);
+  color: var(--fg);
+  padding: 10px 16px;
+  font-size: 12.5px;
+}
+.hb-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.hb-icon { font-size: 14px; color: #f85149; }
+.hb-title { font-weight: 600; }
+.hb-recheck {
+  margin-left: auto;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  color: var(--fg);
+  padding: 2px 10px;
+  border-radius: 4px;
+  font-size: 11px;
+  cursor: pointer;
+}
+.hb-recheck:hover { border-color: var(--accent); color: var(--accent); }
+.hb-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.hb-item {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  gap: 8px 10px;
+  align-items: baseline;
+  font-size: 12px;
+}
+.hb-name {
+  font-family: var(--mono);
+  background: rgba(255, 255, 255, 0.06);
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 11px;
+}
+.hb-problem { color: #f85149; font-weight: 600; font-size: 11px; }
+.hb-hint {
+  grid-column: 1 / -1;
+  color: var(--fg-dim);
+  margin-left: 4px;
+  font-size: 11.5px;
+  line-height: 1.5;
+}
 
 .header {
   display: flex;
