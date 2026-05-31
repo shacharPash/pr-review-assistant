@@ -5,6 +5,7 @@ import type { DiffFile, BlameRange } from '@shared/types';
 import { fileContentFor, useStore } from '../state/store.js';
 import { monacoThemeFor, usePrefs } from '../state/preferences.js';
 import { InlineCommentsLayer } from './InlineCommentsLayer.js';
+import { ReviewCommentsLayer } from './ReviewCommentsLayer.js';
 import { BlameHoverProvider } from './BlameHoverProvider.js';
 
 interface Props {
@@ -19,6 +20,12 @@ export function DiffViewer({ file, position }: Props) {
   const blameEntry = useStore((s) => (file ? s.blame[file.path] : undefined));
   const theme = usePrefs((s) => s.theme);
   const viewMode = usePrefs((s) => s.viewMode);
+  const hideReviewerComments = usePrefs((s) => s.hideReviewerComments);
+  const toggleHideReviewerComments = usePrefs((s) => s.toggleHideReviewerComments);
+  const reviewComments = useStore((s) => s.reviewComments);
+  const reviewerCountOnFile = reviewComments?.inline.filter((c) => c.path === file?.path).length ?? 0;
+  const expansions = useStore((s) => (file ? s.hunkExpansions[file.path] : undefined)) ?? {};
+  const expandHunk = useStore((s) => s.expandHunk);
   const [commentEditor, setCommentEditor] = useState<MonacoEditor.ICodeEditor | null>(null);
   const [blameVisible, setBlameVisible] = useState(false);
 
@@ -57,7 +64,13 @@ export function DiffViewer({ file, position }: Props) {
     newContent: hunkNew,
     oldLineMap,
     newLineMap,
-  } = fileContentFor(file, showNoise);
+    hunkBoundaries,
+  } = fileContentFor(
+    file,
+    showNoise,
+    expansions,
+    fullReady ? { oldContent: fullEntry!.oldContent, newContent: fullEntry!.newContent } : undefined,
+  );
   const oldContent = hasFull ? (fullEntry!.oldContent ?? '') : hunkOld;
   const newContent = hasFull ? (fullEntry!.newContent ?? '') : hunkNew;
 
@@ -114,13 +127,15 @@ export function DiffViewer({ file, position }: Props) {
       : (n: number) => {
           if (hasFull) return String(n);
           const real = newLineMap[n - 1];
-          return real ? String(real) : '';
+          // Separator rows between hidden hunks show `⋯` so the reader
+          // sees the discontinuity instead of an unexplained blank line.
+          return real ? String(real) : '⋯';
         };
 
     commentEditor.updateOptions({
       lineNumbers: modifiedLineNumbers,
-      // Date(10) + " " + author(14) + " " + lineNum(4) = 30 chars exactly.
-      lineNumbersMinChars: blameFn ? 30 : 4,
+      // Date(10) + 2-space sep + author(14) + 2-space sep + lineNum(4) = 32.
+      lineNumbersMinChars: blameFn ? 32 : 4,
     });
 
     if (otherEditor) {
@@ -128,7 +143,7 @@ export function DiffViewer({ file, position }: Props) {
         lineNumbers: (n: number) => {
           if (hasFull) return String(n);
           const real = oldLineMap[n - 1];
-          return real ? String(real) : '';
+          return real ? String(real) : '⋯';
         },
       });
     }
@@ -137,11 +152,82 @@ export function DiffViewer({ file, position }: Props) {
       commentEditor.updateOptions({
         lineNumbers: (n: number) => {
           const real = oldLineMap[n - 1];
-          return real ? String(real) : '';
+          return real ? String(real) : '⋯';
         },
       });
     }
   }, [commentEditor, otherEditor, blameVisible, blameReady, blameEntry, hasFull, newLineMap, oldLineMap, isDeleted]);
+
+  // Context-expansion content widgets — small "↑ 10 more" / "↓ 10 more"
+  // buttons that splice file context into each hunk on click. Skipped in
+  // full-file mode (the surrounding context is already there).
+  const expandWidgetsRef = useRef<unknown[]>([]);
+  useEffect(() => {
+    if (!commentEditor) return;
+    // Remove any previously-attached widgets first (otherwise stale ones from
+    // a prior render with a different hunk count would stack up).
+    for (const w of expandWidgetsRef.current) {
+      commentEditor.removeContentWidget(w as Parameters<typeof commentEditor.removeContentWidget>[0]);
+    }
+    expandWidgetsRef.current = [];
+    if (hasFull || !fullReady || !file) return;
+
+    const newWidgets: unknown[] = [];
+    hunkBoundaries.forEach((b) => {
+      // Top-of-hunk widget: "↑ Expand"
+      if (b.canExpandAbove > 0) {
+        const node = document.createElement('div');
+        node.className = 'expand-context-btn';
+        node.innerHTML = `<span class="ec-icon">↑</span><span>Expand ${Math.min(10, b.canExpandAbove)}${b.canExpandAbove > 10 ? '' : ' (last)'}</span>`;
+        node.title = `${b.canExpandAbove} more lines available above this hunk`;
+        node.onclick = (e) => {
+          e.stopPropagation();
+          expandHunk(file.path, b.hunkIdx, 'above', 10);
+        };
+        const widget = {
+          getId: () => `pra.expand-above.${b.hunkIdx}`,
+          getDomNode: () => node,
+          getPosition: () => ({
+            position: { lineNumber: b.monacoStartLine, column: 1 },
+            preference: [1 /* ABOVE */],
+          }),
+        };
+        commentEditor.addContentWidget(widget as Parameters<typeof commentEditor.addContentWidget>[0]);
+        newWidgets.push(widget);
+      }
+      // Bottom-of-hunk widget: "↓ Expand"
+      if (b.canExpandBelow > 0) {
+        const node = document.createElement('div');
+        node.className = 'expand-context-btn';
+        node.innerHTML = `<span class="ec-icon">↓</span><span>Expand ${Math.min(10, b.canExpandBelow)}${b.canExpandBelow > 10 ? '' : ' (last)'}</span>`;
+        node.title = `${b.canExpandBelow} more lines available below this hunk`;
+        node.onclick = (e) => {
+          e.stopPropagation();
+          expandHunk(file.path, b.hunkIdx, 'below', 10);
+        };
+        const widget = {
+          getId: () => `pra.expand-below.${b.hunkIdx}`,
+          getDomNode: () => node,
+          getPosition: () => ({
+            position: { lineNumber: b.monacoEndLine, column: 1 },
+            preference: [2 /* BELOW */],
+          }),
+        };
+        commentEditor.addContentWidget(widget as Parameters<typeof commentEditor.addContentWidget>[0]);
+        newWidgets.push(widget);
+      }
+    });
+    expandWidgetsRef.current = newWidgets;
+
+    return () => {
+      for (const w of newWidgets) {
+        if (!commentEditor.getModel()?.isDisposed?.()) {
+          commentEditor.removeContentWidget(w as Parameters<typeof commentEditor.removeContentWidget>[0]);
+        }
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [commentEditor, hasFull, fullReady, file?.path, JSON.stringify(hunkBoundaries)]);
 
   return (
     <div className="diff-pane">
@@ -174,6 +260,23 @@ export function DiffViewer({ file, position }: Props) {
           >
             <span className="blame-toggle-icon">👤</span>
             <span>{blameVisible ? 'Blame on' : 'Blame'}</span>
+          </button>
+        )}
+        {reviewerCountOnFile > 0 && (
+          <button
+            type="button"
+            className={`blame-toggle bots ${hideReviewerComments ? '' : 'on'}`}
+            onClick={toggleHideReviewerComments}
+            title={
+              hideReviewerComments
+                ? `Show ${reviewerCountOnFile} review comment${reviewerCountOnFile === 1 ? '' : 's'} (bots + humans) on this file`
+                : `Hide review comments (bots + humans) on the diff. Still visible in the Activity tab.`
+            }
+          >
+            <span className="blame-toggle-icon">💬</span>
+            <span>
+              {hideReviewerComments ? 'Reviews hidden' : `Reviews ${reviewerCountOnFile}`}
+            </span>
           </button>
         )}
         {noiseHunkCount > 0 && (
@@ -251,7 +354,16 @@ export function DiffViewer({ file, position }: Props) {
           />
         </div>
       )}
-      <InlineCommentsLayer editor={commentEditor} filePath={file.path} />
+      <InlineCommentsLayer
+        editor={commentEditor}
+        filePath={file.path}
+        newLineMap={hasFull ? undefined : newLineMap}
+      />
+      <ReviewCommentsLayer
+        editor={commentEditor}
+        filePath={file.path}
+        newLineMap={hasFull ? undefined : newLineMap}
+      />
       <BlameHoverProvider
         editor={commentEditor}
         ranges={hasFull && blameEntry?.status === 'ready' ? blameEntry.ranges : null}
@@ -292,28 +404,52 @@ const editorOptions = {
  */
 const BLAME_AUTHOR_WIDTH = 14;
 const BLAME_LINENUM_WIDTH = 4;
-const BLAME_EMPTY_DATE = ' '.repeat(10);
-const BLAME_EMPTY_AUTHOR = ' '.repeat(BLAME_AUTHOR_WIDTH);
+// Non-breaking spaces — HTML collapses runs of regular spaces, which made the
+// columns shift visually depending on name length. NBSP keeps every column at
+// the exact same pixel position regardless of how short or long the name is.
+const NBSP = ' ';
+const BLAME_EMPTY_DATE = NBSP.repeat(10);
+const BLAME_EMPTY_AUTHOR = NBSP.repeat(BLAME_AUTHOR_WIDTH);
+const BLAME_SEP = NBSP.repeat(2);
 
 function makeBlameLineNumbers(ranges: BlameRange[]): (n: number) => string {
   return (n: number) => {
     const r = ranges.find((x) => n >= x.startingLine && n <= x.endingLine);
-    const lineNum = String(n).padStart(BLAME_LINENUM_WIDTH);
-    if (!r) return `${BLAME_EMPTY_DATE} ${BLAME_EMPTY_AUTHOR} ${lineNum}`;
+    const lineNum = String(n).padStart(BLAME_LINENUM_WIDTH, NBSP);
+    if (!r) return `${BLAME_EMPTY_DATE}${BLAME_SEP}${BLAME_EMPTY_AUTHOR}${BLAME_SEP}${lineNum}`;
     const date = formatBlameDate(r.authoredDate); // 10 chars
-    const who = padOrTruncate(
-      r.authorLogin || r.authorName || '?',
-      BLAME_AUTHOR_WIDTH,
-    );
-    // 10 + 1 + 14 + 1 + 4 = 30 chars total.
-    return `${date} ${who} ${lineNum}`;
+    const who = shortAuthorPadded(r.authorName, r.authorLogin, BLAME_AUTHOR_WIDTH);
+    // 10 + 2 + 14 + 2 + 4 = 32 chars total.
+    return `${date}${BLAME_SEP}${who}${BLAME_SEP}${lineNum}`;
   };
 }
 
-function padOrTruncate(text: string, width: number): string {
-  if (text.length === width) return text;
-  if (text.length < width) return text.padEnd(width);
-  return text.slice(0, width - 2) + '..';
+/**
+ * Picks the most readable short label for the author. Prefers the LAST
+ * token of the commit's full name ("Shay Berman" → "Berman") so the
+ * gutter shows IntelliJ-style surnames instead of long GitHub handles.
+ * Falls back to the full name, then the login. LEFT-aligns the result so
+ * the name always starts at the same column (right side may vary, which is
+ * fine — IntelliJ does the same).
+ */
+function shortAuthorPadded(name: string | null, login: string | null, width: number): string {
+  let label = '?';
+  if (name && name.trim()) {
+    const parts = name.trim().split(/\s+/).filter((p) => p.length > 0);
+    // Use the last token if it's reasonably "name-like" (≥ 2 chars and not
+    // obviously a suffix like "Jr").
+    const last = parts[parts.length - 1];
+    if (last && last.length >= 2 && !/^(jr|sr|iii?|iv)\.?$/i.test(last)) {
+      label = last;
+    } else {
+      label = name.trim();
+    }
+  } else if (login) {
+    label = login;
+  }
+  if (label.length === width) return label;
+  if (label.length < width) return label.padEnd(width, NBSP);
+  return label.slice(0, width - 2) + '..';
 }
 
 function formatBlameDate(iso: string): string {
@@ -330,14 +466,20 @@ function formatBlameDate(iso: string): string {
  * Returns a CSS class name; the CSS rule on each class sets the
  * background of the line-number gutter via `lineNumberClassName`.
  */
+/**
+ * Calibrated to match IntelliJ's blame coloring on real repos:
+ * recent commits read GREEN, multi-year-old code reads BROWN-RED. The
+ * fresh tier (≤ 90 days) marks "this PR's work" prominently; the
+ * ancient tier (7y+) is the deepest red.
+ */
 function ageBucketClass(iso: string): string {
   const ts = new Date(iso).getTime();
   if (Number.isNaN(ts)) return 'blame-age-unknown';
   const days = (Date.now() - ts) / 86_400_000;
-  if (days < 30)    return 'blame-age-fresh';
-  if (days < 180)   return 'blame-age-recent';
-  if (days < 365)   return 'blame-age-moderate';
-  if (days < 365 * 3) return 'blame-age-old';
+  if (days < 90)        return 'blame-age-fresh';
+  if (days < 365)       return 'blame-age-recent';
+  if (days < 365 * 3)   return 'blame-age-moderate';
+  if (days < 365 * 7)   return 'blame-age-old';
   return 'blame-age-ancient';
 }
 

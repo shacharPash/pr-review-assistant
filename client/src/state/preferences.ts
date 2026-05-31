@@ -13,12 +13,15 @@ interface Preferences {
   railWidth: number;
   /** Height of the Summary card in pixels. */
   summaryHeight: number;
+  /** Suppress all reviewer/bot inline comments in the diff. */
+  hideReviewerComments: boolean;
   setTheme: (t: Theme) => void;
   setViewMode: (m: ViewMode) => void;
   toggleTLDR: () => void;
   setTLDRHeight: (px: number) => void;
   setRailWidth: (px: number) => void;
   setSummaryHeight: (px: number) => void;
+  toggleHideReviewerComments: () => void;
 }
 
 const RAIL_WIDTH_KEY = 'pra.railWidth';
@@ -39,6 +42,7 @@ const TLDR_HEIGHT_DEFAULT = 360;
 const THEME_KEY = 'pra.theme';
 const MODE_KEY = 'pra.viewMode';
 const TLDR_KEY = 'pra.tldrCollapsed';
+const HIDE_REVIEWER_KEY = 'pra.hideReviewerComments';
 
 function readLS<T extends string>(key: string, fallback: T, allowed: readonly T[]): T {
   if (typeof window === 'undefined') return fallback;
@@ -66,6 +70,9 @@ export const usePrefs = create<Preferences>((set, get) => ({
     if (!Number.isFinite(n)) return RAIL_WIDTH_DEFAULT;
     return Math.max(RAIL_WIDTH_MIN, Math.min(RAIL_WIDTH_MAX, n));
   })(),
+  hideReviewerComments: typeof window !== 'undefined'
+    ? window.localStorage.getItem(HIDE_REVIEWER_KEY) === '1'
+    : false,
   summaryHeight: (() => {
     if (typeof window === 'undefined') return SUMMARY_HEIGHT_DEFAULT;
     const raw = window.localStorage.getItem(SUMMARY_HEIGHT_KEY);
@@ -116,6 +123,14 @@ export const usePrefs = create<Preferences>((set, get) => ({
     set({ summaryHeight: clamped });
     if (typeof window !== 'undefined') {
       window.localStorage.setItem(SUMMARY_HEIGHT_KEY, String(clamped));
+    }
+  },
+
+  toggleHideReviewerComments() {
+    const next = !get().hideReviewerComments;
+    set({ hideReviewerComments: next });
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(HIDE_REVIEWER_KEY, next ? '1' : '0');
     }
   },
 }));

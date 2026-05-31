@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch --ignore '**/vite.config.ts.timestamp-*' --ignore '**/dist/**' --ignore '**/client/**' server/index.ts",
+    "dev": "tsx watch --env-file-if-exists=.env --ignore '**/vite.config.ts.timestamp-*' --ignore '**/dist/**' --ignore '**/client/**' server/index.ts",
     "build": "tsc -b && vite build",
     "preview": "node dist/server/index.js",
     "typecheck": "tsc -b --noEmit",

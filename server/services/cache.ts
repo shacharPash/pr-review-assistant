@@ -1,4 +1,5 @@
 import type { PRBundle } from '../../shared/types.js';
+import type { PRComments } from '../../shared/reviewComments.js';
 
 interface Entry {
   bundle: PRBundle;
@@ -8,6 +9,7 @@ interface Entry {
   beforeAfter?: string; // structured "BEFORE: ... AFTER: ..." or "NONE"
   complexity?: string; // one of: simple, moderate, complex, unknown
   explanations?: Record<string, string>;
+  reviewComments?: PRComments;
   storedAt: number;
 }
 
@@ -152,4 +154,19 @@ export function setExplanation(
   if (!existing) return;
   const explanations = { ...(existing.explanations ?? {}), [personaId]: text };
   store.set(k, { ...existing, explanations });
+}
+
+export function getReviewComments(
+  owner: string, repo: string, number: number, headSha: string,
+): PRComments | undefined {
+  return store.get(key(owner, repo, number, headSha))?.reviewComments;
+}
+
+export function setReviewComments(
+  owner: string, repo: string, number: number, headSha: string, comments: PRComments,
+): void {
+  const k = key(owner, repo, number, headSha);
+  const existing = store.get(k);
+  if (!existing) return;
+  store.set(k, { ...existing, reviewComments: comments });
 }
