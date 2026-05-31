@@ -7,6 +7,15 @@ const TIMEOUT_MS = 90_000;
 export interface RunOptions {
   /** Override the default reviewer-onboarding system prompt with a custom one. */
   systemPrompt?: string;
+  /**
+   * Claude model alias passed to `--model` ('sonnet', 'opus', 'haiku', or a
+   * full id like 'claude-sonnet-4-6'). Defaults to the user's `claude` CLI
+   * default — usually whatever they're authenticated with — which can be
+   * Opus and therefore slow for short outputs. Short-form routes (headline,
+   * tweet, plain-english) should override to 'sonnet' for ~3× faster
+   * generation with no meaningful quality drop on those tasks.
+   */
+  model?: string;
 }
 
 export interface RunnerEvents {
@@ -28,11 +37,9 @@ export class ClaudeRunner {
     const prompt = opts.systemPrompt
       ? buildCustomPrompt(bundle, opts.systemPrompt)
       : buildPrompt(bundle);
-    const proc = spawn(
-      'claude',
-      ['-p', '--output-format', 'stream-json', '--verbose'],
-      { stdio: ['pipe', 'pipe', 'pipe'] },
-    );
+    const args = ['-p', '--output-format', 'stream-json', '--verbose'];
+    if (opts.model) args.push('--model', opts.model);
+    const proc = spawn('claude', args, { stdio: ['pipe', 'pipe', 'pipe'] });
     this.child = proc;
 
     proc.on('error', (err) => {
@@ -201,21 +208,24 @@ Diff:
 ${diff}`;
 }
 
+/**
+ * Build the Jira context section for Claude prompts.
+ *
+ * Includes ONLY the ticket key, type, status, and title — not the
+ * description. The description (up to several KB of corporate Jira prose)
+ * was historically inlined here, but it diluted strict prompt instructions
+ * (e.g. the tweet's "no preamble" rule) and Claude would echo its register
+ * verbatim ("The summary is the only output requested.", "Let me write…").
+ * Title + status is enough linkage; the user can read the full ticket via
+ * the Jira badge popover.
+ */
 function formatJiraContext(bundle: PRBundle): string {
   const tickets = bundle.jira?.tickets ?? [];
   if (tickets.length === 0) return '';
-  const blocks = tickets.map((t) => {
-    const trimmedDesc = t.description.length > 1500
-      ? t.description.slice(0, 1500) + '\n...[truncated]'
-      : t.description;
-    return `- [${t.key}] (${t.type}, ${t.status}) ${t.title}\n${trimmedDesc ? `  Description:\n${indent(trimmedDesc, 2)}` : ''}`;
-  });
-  return `\nLinked Jira ticket${tickets.length > 1 ? 's' : ''}:\n${blocks.join('\n\n')}\n`;
-}
-
-function indent(s: string, n: number): string {
-  const pad = ' '.repeat(n);
-  return s.split('\n').map((l) => pad + l).join('\n');
+  const blocks = tickets.map(
+    (t) => `- [${t.key}] (${t.type}, ${t.status}) ${t.title}`,
+  );
+  return `\nLinked Jira ticket${tickets.length > 1 ? 's' : ''}:\n${blocks.join('\n')}\n`;
 }
 
 function buildPrompt(bundle: PRBundle): string {

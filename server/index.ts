@@ -17,6 +17,8 @@ import { complexityRouter } from './routes/complexity.js';
 import { blameRouter } from './routes/blame.js';
 import { scopedDiffRouter } from './routes/scopedDiff.js';
 import { reviewCommentsRouter } from './routes/reviewComments.js';
+import { healthRouter } from './routes/health.js';
+import { checkHealth } from './services/healthCheck.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -51,6 +53,7 @@ async function main() {
   app.use(blameRouter);
   app.use(scopedDiffRouter);
   app.use(reviewCommentsRouter);
+  app.use(healthRouter);
 
   if (isDev) {
     const vite = await createViteServer({
@@ -77,9 +80,24 @@ async function main() {
     });
   }
 
-  app.listen(PORT, () => {
+  app.listen(PORT, async () => {
     const url = `http://localhost:${PORT}`;
     console.log(`[pr-review-assistant] listening on ${url}`);
+    // Surface missing-dep warnings in the terminal too — not just the UI
+    // banner. Helps people who launched the server but didn't open the
+    // browser yet (and didn't realize gh / claude were missing).
+    try {
+      const report = await checkHealth(true);
+      for (const dep of report.dependencies) {
+        if (dep.problem) {
+          console.warn(
+            `[pr-review-assistant] ⚠  ${dep.name} ${dep.problem}: ${dep.hint ?? ''}`,
+          );
+        }
+      }
+    } catch {
+      /* health probe is best-effort */
+    }
     if (isDev && process.env.NO_OPEN !== '1') {
       open(url).catch(() => {});
     }

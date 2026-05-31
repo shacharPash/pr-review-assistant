@@ -9,6 +9,7 @@ import { SummaryResizer } from './components/SummaryResizer.js';
 import { JiraBadge } from './components/JiraBadge.js';
 import { ShortcutsHelp } from './components/ShortcutsHelp.js';
 import { AuthorChip } from './components/AuthorChip.js';
+import { HealthBanner } from './components/HealthBanner.js';
 
 export function App() {
   const bundle = useStore((s) => s.bundle);
@@ -65,6 +66,7 @@ export function App() {
         )}
         <HeaderControls />
       </header>
+      <HealthBanner />
       <SummaryCard />
       {bundle && <SummaryResizer />}
       <PRView />

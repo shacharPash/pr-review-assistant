@@ -72,7 +72,21 @@ interface State {
   reviewCommentsError?: string;
   /** Per-file, per-hunk context-line expansion ("↑ 10 more" / "↓ 10 more"). */
   hunkExpansions: Record<string, Record<number, HunkExpansion>>;
+  /** Status of the external CLIs (gh, claude); used by the setup banner. */
+  health: {
+    status: 'idle' | 'loading' | 'ready';
+    ok: boolean;
+    dependencies: Array<{
+      name: 'gh' | 'claude';
+      installed: boolean;
+      authenticated?: boolean;
+      version?: string;
+      problem: 'missing' | 'unauthenticated' | null;
+      hint?: string;
+    }>;
+  };
   loadPR: (ref: string) => Promise<void>;
+  fetchHealth: (force?: boolean) => Promise<void>;
   selectScope: (scope: SelectedScope) => Promise<void>;
   fetchReviewComments: () => Promise<void>;
   /** Expand context lines around a hunk by N lines, in the given direction. */
@@ -341,6 +355,7 @@ export const useStore = create<State>((set, get) => ({
   reviewComments: null,
   reviewCommentsStatus: 'idle',
   hunkExpansions: {},
+  health: { status: 'idle', ok: true, dependencies: [] },
 
   async loadPR(ref) {
     set({
@@ -459,6 +474,19 @@ export const useStore = create<State>((set, get) => ({
       });
     } catch (err) {
       set({ scopeLoading: false, error: { message: (err as Error).message } });
+    }
+  },
+
+  async fetchHealth(force = false) {
+    set({ health: { ...get().health, status: 'loading' } });
+    try {
+      const res = await fetch(`/api/health${force ? '?force=1' : ''}`);
+      const data = (await res.json()) as { ok: boolean; dependencies: State['health']['dependencies'] };
+      set({ health: { status: 'ready', ok: data.ok, dependencies: data.dependencies } });
+    } catch (err) {
+      // Don't block the app on a health-check failure; just leave the banner
+      // hidden so the user can keep using whatever works.
+      set({ health: { status: 'ready', ok: true, dependencies: [] } });
     }
   },
 
