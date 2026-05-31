@@ -201,21 +201,24 @@ Diff:
 ${diff}`;
 }
 
+/**
+ * Build the Jira context section for Claude prompts.
+ *
+ * Includes ONLY the ticket key, type, status, and title — not the
+ * description. The description (up to several KB of corporate Jira prose)
+ * was historically inlined here, but it diluted strict prompt instructions
+ * (e.g. the tweet's "no preamble" rule) and Claude would echo its register
+ * verbatim ("The summary is the only output requested.", "Let me write…").
+ * Title + status is enough linkage; the user can read the full ticket via
+ * the Jira badge popover.
+ */
 function formatJiraContext(bundle: PRBundle): string {
   const tickets = bundle.jira?.tickets ?? [];
   if (tickets.length === 0) return '';
-  const blocks = tickets.map((t) => {
-    const trimmedDesc = t.description.length > 1500
-      ? t.description.slice(0, 1500) + '\n...[truncated]'
-      : t.description;
-    return `- [${t.key}] (${t.type}, ${t.status}) ${t.title}\n${trimmedDesc ? `  Description:\n${indent(trimmedDesc, 2)}` : ''}`;
-  });
-  return `\nLinked Jira ticket${tickets.length > 1 ? 's' : ''}:\n${blocks.join('\n\n')}\n`;
-}
-
-function indent(s: string, n: number): string {
-  const pad = ' '.repeat(n);
-  return s.split('\n').map((l) => pad + l).join('\n');
+  const blocks = tickets.map(
+    (t) => `- [${t.key}] (${t.type}, ${t.status}) ${t.title}`,
+  );
+  return `\nLinked Jira ticket${tickets.length > 1 ? 's' : ''}:\n${blocks.join('\n')}\n`;
 }
 
 function buildPrompt(bundle: PRBundle): string {
