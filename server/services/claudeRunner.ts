@@ -7,6 +7,15 @@ const TIMEOUT_MS = 90_000;
 export interface RunOptions {
   /** Override the default reviewer-onboarding system prompt with a custom one. */
   systemPrompt?: string;
+  /**
+   * Claude model alias passed to `--model` ('sonnet', 'opus', 'haiku', or a
+   * full id like 'claude-sonnet-4-6'). Defaults to the user's `claude` CLI
+   * default — usually whatever they're authenticated with — which can be
+   * Opus and therefore slow for short outputs. Short-form routes (headline,
+   * tweet, plain-english) should override to 'sonnet' for ~3× faster
+   * generation with no meaningful quality drop on those tasks.
+   */
+  model?: string;
 }
 
 export interface RunnerEvents {
@@ -28,11 +37,9 @@ export class ClaudeRunner {
     const prompt = opts.systemPrompt
       ? buildCustomPrompt(bundle, opts.systemPrompt)
       : buildPrompt(bundle);
-    const proc = spawn(
-      'claude',
-      ['-p', '--output-format', 'stream-json', '--verbose'],
-      { stdio: ['pipe', 'pipe', 'pipe'] },
-    );
+    const args = ['-p', '--output-format', 'stream-json', '--verbose'];
+    if (opts.model) args.push('--model', opts.model);
+    const proc = spawn('claude', args, { stdio: ['pipe', 'pipe', 'pipe'] });
     this.child = proc;
 
     proc.on('error', (err) => {

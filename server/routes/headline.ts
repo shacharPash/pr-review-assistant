@@ -68,5 +68,8 @@ headlineRouter.get('/api/headline/stream', (req: Request, res: Response) => {
   });
 
   req.on('close', () => runner.abort());
-  runner.start(bundle, { systemPrompt: HEADLINE_PROMPT });
+  // Headline is one short sentence — Sonnet is plenty smart for it and is
+  // 2-3× faster than Opus, which is the user's CLI default and the actual
+  // driver of "the headline is slow" complaints.
+  runner.start(bundle, { systemPrompt: HEADLINE_PROMPT, model: 'sonnet' });
 });
