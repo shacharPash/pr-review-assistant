@@ -30,7 +30,11 @@ interface Preferences {
 const BLAME_WIDTH_KEY = 'pra.blameWidth';
 const BLAME_WIDTH_MIN = 10;
 const BLAME_WIDTH_MAX = 50;
-const BLAME_WIDTH_DEFAULT = 32;
+// 29 = date(10) + 2 sep + author(11) + 2 sep + 4 line# — fits common names
+// (ShaharPash, mariaKull, matan-meshi, shacharPash) without leaving the
+// awkward gap that the 32-default with author(14) created. Drag wider to
+// fit longer logins; double-click the handle to snap back to default.
+const BLAME_WIDTH_DEFAULT = 29;
 
 const RAIL_WIDTH_KEY = 'pra.railWidth';
 const RAIL_WIDTH_MIN = 280;

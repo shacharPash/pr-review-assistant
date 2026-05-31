@@ -448,11 +448,15 @@ interface BlameFormat {
   authorWidth: number;
 }
 function blameFormatFor(totalWidth: number): BlameFormat {
-  if (totalWidth >= 32) return { dateChars: 10, authorWidth: 14 };
-  if (totalWidth >= 29) return { dateChars: 7,  authorWidth: 14 };
-  if (totalWidth >= 26) return { dateChars: 4,  authorWidth: 14 };
-  if (totalWidth >= 20) return { dateChars: 0,  authorWidth: 14 };
-  // Below 20: drop the date entirely, shrink author to whatever fits.
+  // Layout overhead per format (sep + sep + line#):
+  //   with date    → dateChars + 2 + 2 + 4 = dateChars + 8
+  //   without date →             2 + 4    = 6
+  // Whatever remains goes to the author column. Author grows when you drag
+  // the gutter wider; shrinks (then truncates) when you drag narrower.
+  if (totalWidth >= 28) return { dateChars: 10, authorWidth: Math.max(4, totalWidth - 18) };
+  if (totalWidth >= 25) return { dateChars: 7,  authorWidth: Math.max(4, totalWidth - 15) };
+  if (totalWidth >= 22) return { dateChars: 4,  authorWidth: Math.max(4, totalWidth - 12) };
+  // Below 22 we drop the date entirely.
   return { dateChars: 0, authorWidth: Math.max(4, totalWidth - 6) };
 }
 
