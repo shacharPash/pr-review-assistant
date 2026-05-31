@@ -118,8 +118,17 @@ export function DiffViewer({ file, position }: Props) {
   // (optional blame annotation). Recomputes whenever any input changes.
   useEffect(() => {
     if (!commentEditor) return;
+
+    // Monaco-line → real file line. Identity in full-file mode where the
+    // editor model IS the file; otherwise via newLineMap which knows the
+    // hunk-and-context layout. Returns 0 for separator rows (between
+    // hidden hunks) so the caller can render a `⋯` marker.
+    const toRealLine = hasFull
+      ? (n: number) => n
+      : (n: number) => newLineMap[n - 1] ?? 0;
+
     const blameFn = blameVisible && blameReady
-      ? makeBlameLineNumbers(blameEntry!.ranges)
+      ? makeBlameLineNumbers(blameEntry!.ranges, toRealLine)
       : null;
 
     const modifiedLineNumbers = blameFn
@@ -132,10 +141,16 @@ export function DiffViewer({ file, position }: Props) {
           return real ? String(real) : '⋯';
         };
 
+    // Lock the gutter width to 32 chars as soon as blame DATA is available
+    // (even if the user hasn't toggled blame visible yet). The previous
+    // behavior toggled it 4 → 32 on every blame click, which forced Monaco
+    // to grow the gutter mid-render and produced text-overlay artifacts on
+    // rows that didn't get fully repainted. Once we know we'll need 32
+    // chars, keep them reserved.
     commentEditor.updateOptions({
       lineNumbers: modifiedLineNumbers,
       // Date(10) + 2-space sep + author(14) + 2-space sep + lineNum(4) = 32.
-      lineNumbersMinChars: blameFn ? 32 : 4,
+      lineNumbersMinChars: blameReady ? 32 : 4,
     });
 
     if (otherEditor) {
@@ -145,6 +160,9 @@ export function DiffViewer({ file, position }: Props) {
           const real = oldLineMap[n - 1];
           return real ? String(real) : '⋯';
         },
+        // Match the modified-side gutter width so split mode looks even
+        // and Monaco doesn't push one pane against the divider.
+        lineNumbersMinChars: blameReady ? 32 : 4,
       });
     }
     // Single-editor mode (added/deleted file)
@@ -156,6 +174,13 @@ export function DiffViewer({ file, position }: Props) {
         },
       });
     }
+
+    // Force a full layout pass so Monaco fully re-paints the gutter
+    // instead of doing an in-place incremental patch. The patch path can
+    // leave stale text fragments visible underneath the new content
+    // (especially on rows whose author differs from neighbors).
+    commentEditor.layout();
+    otherEditor?.layout();
   }, [commentEditor, otherEditor, blameVisible, blameReady, blameEntry, hasFull, newLineMap, oldLineMap, isDeleted]);
 
   // Context-expansion content widgets — small "↑ 10 more" / "↓ 10 more"
@@ -412,10 +437,30 @@ const BLAME_EMPTY_DATE = NBSP.repeat(10);
 const BLAME_EMPTY_AUTHOR = NBSP.repeat(BLAME_AUTHOR_WIDTH);
 const BLAME_SEP = NBSP.repeat(2);
 
-function makeBlameLineNumbers(ranges: BlameRange[]): (n: number) => string {
+/**
+ * Build the gutter callback for blame mode.
+ *
+ * `toRealLine(n)` converts Monaco's row number to the file's real line
+ * number, so the blame range lookup matches the right commit even in
+ * hunks-only mode (where Monaco line ≠ real file line). Returns 0 for
+ * separator rows between hidden hunks; we render `⋯` there instead of a
+ * fake blame entry.
+ *
+ * The displayed line number is also the REAL file line (consistent with
+ * what the gutter shows when blame is OFF).
+ */
+function makeBlameLineNumbers(
+  ranges: BlameRange[],
+  toRealLine: (n: number) => number,
+): (n: number) => string {
+  const GAP_LINENUM = '⋯'.padStart(BLAME_LINENUM_WIDTH, NBSP);
   return (n: number) => {
-    const r = ranges.find((x) => n >= x.startingLine && n <= x.endingLine);
-    const lineNum = String(n).padStart(BLAME_LINENUM_WIDTH, NBSP);
+    const realLine = toRealLine(n);
+    if (realLine === 0) {
+      return `${BLAME_EMPTY_DATE}${BLAME_SEP}${BLAME_EMPTY_AUTHOR}${BLAME_SEP}${GAP_LINENUM}`;
+    }
+    const lineNum = String(realLine).padStart(BLAME_LINENUM_WIDTH, NBSP);
+    const r = ranges.find((x) => realLine >= x.startingLine && realLine <= x.endingLine);
     if (!r) return `${BLAME_EMPTY_DATE}${BLAME_SEP}${BLAME_EMPTY_AUTHOR}${BLAME_SEP}${lineNum}`;
     const date = formatBlameDate(r.authoredDate); // 10 chars
     const who = shortAuthorPadded(r.authorName, r.authorLogin, BLAME_AUTHOR_WIDTH);
@@ -452,9 +497,13 @@ function shortAuthorPadded(name: string | null, login: string | null, width: num
   return label.slice(0, width - 2) + '..';
 }
 
-function formatBlameDate(iso: string): string {
+function formatBlameDate(iso: string | null | undefined): string {
+  // Visible placeholder (10 chars, same width as DD/MM/YYYY) for the rare
+  // case GitHub returns no authoredDate. Better than 10 blank spaces that
+  // look like a bug.
+  if (!iso) return '??/??/????';
   const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '          ';
+  if (Number.isNaN(d.getTime())) return '??/??/????';
   const dd = String(d.getDate()).padStart(2, '0');
   const mm = String(d.getMonth() + 1).padStart(2, '0');
   const yyyy = String(d.getFullYear());
