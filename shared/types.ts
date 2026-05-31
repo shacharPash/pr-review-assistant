@@ -52,11 +52,32 @@ export interface PRMeta {
   state: 'open' | 'closed' | 'merged';
 }
 
+export interface PRCommit {
+  oid: string;             // full SHA
+  short: string;           // first 7
+  message: string;
+  author: string;          // login or name
+  authoredAt: string;      // ISO
+}
+
 export interface PRBundle {
   meta: PRMeta;
   files: DiffFile[];
   commitMessages: string[];
+  /** Full list of commits in this PR, newest first. */
+  commits?: PRCommit[];
   jira?: import('./jira.js').JiraInfo;
+  /**
+   * When set, the bundle represents a partial diff scoped to a commit
+   * range (a single commit, or "since last reviewed"). When unset, the
+   * bundle is the full PR diff.
+   */
+  scope?: {
+    kind: 'commit' | 'since-review';
+    label: string;        // human-readable label for the chip
+    baseSha: string;      // the SHA we diffed FROM
+    headSha: string;      // the SHA we diffed TO (usually PR head)
+  };
 }
 
 export interface APIError {

@@ -1,16 +1,30 @@
 import { useMemo, type MouseEvent } from 'react';
-import { useStore } from '../state/store.js';
+import { useStore, selectDisplayFiles } from '../state/store.js';
 import type { DiffFile } from '@shared/types';
+import { CommitSelector } from './CommitSelector.js';
 
 export function FileSidebar() {
-  const files = useStore((s) => s.bundle?.files ?? []);
+  const files = useStore(selectDisplayFiles);
   const active = useStore((s) => s.activeFilePath);
   const showNoise = useStore((s) => s.showNoise);
   const toggleNoise = useStore((s) => s.toggleNoise);
   const selectFile = useStore((s) => s.selectFile);
   const reviewed = useStore((s) => s.reviewed);
   const comments = useStore((s) => s.comments);
+  const lineComments = useStore((s) => s.lineComments);
   const toggleReviewed = useStore((s) => s.toggleReviewed);
+  const reviewComments = useStore((s) => s.reviewComments);
+
+  // Map of file path → number of bot/reviewer inline comments. Used to
+  // surface bot activity in the sidebar so the reviewer can see which
+  // files already have comments from others.
+  const reviewerCountByFile = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const c of reviewComments?.inline ?? []) {
+      m.set(c.path, (m.get(c.path) ?? 0) + 1);
+    }
+    return m;
+  }, [reviewComments]);
 
   const { visible, hidden } = useMemo(() => {
     const visible: DiffFile[] = [];
@@ -34,6 +48,7 @@ export function FileSidebar() {
 
   return (
     <div className="file-list">
+      <CommitSelector />
       <div className="section-label">
         <span className="label-with-info">
           Reading order
@@ -54,7 +69,9 @@ export function FileSidebar() {
       </div>
       {visible.map((f, i) => {
         const isReviewed = !!reviewed[f.path];
-        const hasComment = !!comments[f.path]?.trim();
+        const hasFileNote = !!comments[f.path]?.trim();
+        const inlineCount = Object.values(lineComments[f.path] ?? {}).filter((v) => v?.body?.trim()).length;
+        const commentCount = (hasFileNote ? 1 : 0) + inlineCount;
         const className = classNameOf(f.path);
         const badges = badgesFor(f);
         const handleCheckClick = (e: MouseEvent) => {
@@ -83,7 +100,24 @@ export function FileSidebar() {
                 {badges.map((b) => (
                   <span key={b.label} className={`badge ${b.kind}`}>{b.label}</span>
                 ))}
-                {hasComment && <span className="badge comment-badge" title="Has a note">●</span>}
+                {commentCount > 0 && (
+                  <span
+                    className="badge comment-count-badge"
+                    title={`${commentCount} comment${commentCount === 1 ? '' : 's'} on this file`}
+                  >
+                    💬 {commentCount}
+                  </span>
+                )}
+                {reviewerCountByFile.get(f.path) ? (
+                  <span
+                    className="badge reviewer-count-badge"
+                    title={`${reviewerCountByFile.get(f.path)} bot/reviewer comment${
+                      reviewerCountByFile.get(f.path) === 1 ? '' : 's'
+                    } on this file`}
+                  >
+                    🤖 {reviewerCountByFile.get(f.path)}
+                  </span>
+                ) : null}
               </div>
               <div className="path">{f.path}</div>
             </div>
