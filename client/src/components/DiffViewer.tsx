@@ -6,6 +6,7 @@ import { fileContentFor, useStore } from '../state/store.js';
 import { monacoThemeFor, usePrefs } from '../state/preferences.js';
 import { InlineCommentsLayer } from './InlineCommentsLayer.js';
 import { ReviewCommentsLayer } from './ReviewCommentsLayer.js';
+import { BlameResizer } from './BlameResizer.js';
 import { BlameHoverProvider } from './BlameHoverProvider.js';
 
 interface Props {
@@ -22,6 +23,8 @@ export function DiffViewer({ file, position }: Props) {
   const viewMode = usePrefs((s) => s.viewMode);
   const hideReviewerComments = usePrefs((s) => s.hideReviewerComments);
   const toggleHideReviewerComments = usePrefs((s) => s.toggleHideReviewerComments);
+  const blameWidth = usePrefs((s) => s.blameWidth);
+  const setBlameWidth = usePrefs((s) => s.setBlameWidth);
   const reviewComments = useStore((s) => s.reviewComments);
   const reviewerCountOnFile = reviewComments?.inline.filter((c) => c.path === file?.path).length ?? 0;
   const expansions = useStore((s) => (file ? s.hunkExpansions[file.path] : undefined)) ?? {};
@@ -127,8 +130,9 @@ export function DiffViewer({ file, position }: Props) {
       ? (n: number) => n
       : (n: number) => newLineMap[n - 1] ?? 0;
 
-    const blameFn = blameVisible && blameReady
-      ? makeBlameLineNumbers(blameEntry!.ranges, toRealLine)
+    const blameOn = blameVisible && blameReady;
+    const blameFn = blameOn
+      ? makeBlameLineNumbers(blameEntry!.ranges, toRealLine, blameWidth)
       : null;
 
     const modifiedLineNumbers = blameFn
@@ -141,16 +145,13 @@ export function DiffViewer({ file, position }: Props) {
           return real ? String(real) : '⋯';
         };
 
-    // Lock the gutter width to 32 chars as soon as blame DATA is available
-    // (even if the user hasn't toggled blame visible yet). The previous
-    // behavior toggled it 4 → 32 on every blame click, which forced Monaco
-    // to grow the gutter mid-render and produced text-overlay artifacts on
-    // rows that didn't get fully repainted. Once we know we'll need 32
-    // chars, keep them reserved.
+    // Gutter width is 4 when blame is OFF (just the line number), and
+    // matches the user's chosen blame width when ON. We only reserve
+    // those wide chars when actually showing blame — solves the
+    // "empty stripe when blame is off" problem.
     commentEditor.updateOptions({
       lineNumbers: modifiedLineNumbers,
-      // Date(10) + 2-space sep + author(14) + 2-space sep + lineNum(4) = 32.
-      lineNumbersMinChars: blameReady ? 32 : 4,
+      lineNumbersMinChars: blameOn ? blameWidth : 4,
     });
 
     if (otherEditor) {
@@ -160,9 +161,7 @@ export function DiffViewer({ file, position }: Props) {
           const real = oldLineMap[n - 1];
           return real ? String(real) : '⋯';
         },
-        // Original side doesn't render blame — keep it narrow. Earlier
-        // attempt at matching the modified-side width left a huge empty
-        // stripe on the left of the diff.
+        // Original side doesn't render blame — keep it narrow.
         lineNumbersMinChars: 4,
       });
     }
@@ -177,12 +176,10 @@ export function DiffViewer({ file, position }: Props) {
     }
 
     // Force a full layout pass so Monaco fully re-paints the gutter
-    // instead of doing an in-place incremental patch. The patch path can
-    // leave stale text fragments visible underneath the new content
-    // (especially on rows whose author differs from neighbors).
+    // instead of doing an in-place incremental patch.
     commentEditor.layout();
     otherEditor?.layout();
-  }, [commentEditor, otherEditor, blameVisible, blameReady, blameEntry, hasFull, newLineMap, oldLineMap, isDeleted]);
+  }, [commentEditor, otherEditor, blameVisible, blameReady, blameEntry, hasFull, newLineMap, oldLineMap, isDeleted, blameWidth]);
 
   // Context-expansion content widgets — small "↑ 10 more" / "↓ 10 more"
   // buttons that splice file context into each hunk on click. Skipped in
@@ -390,6 +387,11 @@ export function DiffViewer({ file, position }: Props) {
         filePath={file.path}
         newLineMap={hasFull ? undefined : newLineMap}
       />
+      <BlameResizer
+        width={blameWidth}
+        setWidth={setBlameWidth}
+        visible={blameVisible && blameReady}
+      />
       <BlameHoverProvider
         editor={commentEditor}
         ranges={hasFull && blameEntry?.status === 'ready' ? blameEntry.ranges : null}
@@ -428,15 +430,31 @@ const editorOptions = {
  * width — that was causing rows with truncated names to shift by ~1px,
  * breaking column alignment.
  */
-const BLAME_AUTHOR_WIDTH = 14;
 const BLAME_LINENUM_WIDTH = 4;
 // Non-breaking spaces — HTML collapses runs of regular spaces, which made the
 // columns shift visually depending on name length. NBSP keeps every column at
 // the exact same pixel position regardless of how short or long the name is.
 const NBSP = ' ';
-const BLAME_EMPTY_DATE = NBSP.repeat(10);
-const BLAME_EMPTY_AUTHOR = NBSP.repeat(BLAME_AUTHOR_WIDTH);
 const BLAME_SEP = NBSP.repeat(2);
+
+/**
+ * Pick the date+author layout for a given total gutter width (in chars).
+ * As space shrinks we sacrifice date precision first, then author width.
+ *
+ * Width budget = date + (2 sep, when date present) + author + 2 sep + 4 line#.
+ */
+interface BlameFormat {
+  dateChars: 10 | 7 | 4 | 0;
+  authorWidth: number;
+}
+function blameFormatFor(totalWidth: number): BlameFormat {
+  if (totalWidth >= 32) return { dateChars: 10, authorWidth: 14 };
+  if (totalWidth >= 29) return { dateChars: 7,  authorWidth: 14 };
+  if (totalWidth >= 26) return { dateChars: 4,  authorWidth: 14 };
+  if (totalWidth >= 20) return { dateChars: 0,  authorWidth: 14 };
+  // Below 20: drop the date entirely, shrink author to whatever fits.
+  return { dateChars: 0, authorWidth: Math.max(4, totalWidth - 6) };
+}
 
 /**
  * Build the gutter callback for blame mode.
@@ -453,20 +471,26 @@ const BLAME_SEP = NBSP.repeat(2);
 function makeBlameLineNumbers(
   ranges: BlameRange[],
   toRealLine: (n: number) => number,
+  width: number,
 ): (n: number) => string {
+  const fmt = blameFormatFor(width);
+  const hasDate = fmt.dateChars > 0;
+  const emptyDate = NBSP.repeat(fmt.dateChars);
+  const emptyAuthor = NBSP.repeat(fmt.authorWidth);
+  const dateSep = hasDate ? BLAME_SEP : '';
   const GAP_LINENUM = '⋯'.padStart(BLAME_LINENUM_WIDTH, NBSP);
+
   return (n: number) => {
     const realLine = toRealLine(n);
     if (realLine === 0) {
-      return `${BLAME_EMPTY_DATE}${BLAME_SEP}${BLAME_EMPTY_AUTHOR}${BLAME_SEP}${GAP_LINENUM}`;
+      return `${emptyDate}${dateSep}${emptyAuthor}${BLAME_SEP}${GAP_LINENUM}`;
     }
     const lineNum = String(realLine).padStart(BLAME_LINENUM_WIDTH, NBSP);
     const r = ranges.find((x) => realLine >= x.startingLine && realLine <= x.endingLine);
-    if (!r) return `${BLAME_EMPTY_DATE}${BLAME_SEP}${BLAME_EMPTY_AUTHOR}${BLAME_SEP}${lineNum}`;
-    const date = formatBlameDate(r.authoredDate); // 10 chars
-    const who = shortAuthorPadded(r.authorName, r.authorLogin, BLAME_AUTHOR_WIDTH);
-    // 10 + 2 + 14 + 2 + 4 = 32 chars total.
-    return `${date}${BLAME_SEP}${who}${BLAME_SEP}${lineNum}`;
+    if (!r) return `${emptyDate}${dateSep}${emptyAuthor}${BLAME_SEP}${lineNum}`;
+    const date = formatBlameDate(r.authoredDate, fmt.dateChars);
+    const who = shortAuthorPadded(r.authorName, r.authorLogin, fmt.authorWidth);
+    return `${date}${dateSep}${who}${BLAME_SEP}${lineNum}`;
   };
 }
 
@@ -506,17 +530,22 @@ function shortAuthorPadded(name: string | null, login: string | null, width: num
   return label.slice(0, width - 2) + '..';
 }
 
-function formatBlameDate(iso: string | null | undefined): string {
-  // Visible placeholder (10 chars, same width as DD/MM/YYYY) for the rare
-  // case GitHub returns no authoredDate. Better than 10 blank spaces that
-  // look like a bug.
-  if (!iso) return '??/??/????';
+function formatBlameDate(iso: string | null | undefined, dateChars: 10 | 7 | 4 | 0): string {
+  if (dateChars === 0) return '';
+  // Visible "we don't know" placeholder for the rare case GitHub returns
+  // no authoredDate. Beats blank spaces that look like a render bug.
+  const unknown = dateChars === 10 ? '??/??/????' : dateChars === 7 ? '??/????' : '????';
+  if (!iso) return unknown;
   const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '??/??/????';
+  if (Number.isNaN(d.getTime())) return unknown;
   const dd = String(d.getDate()).padStart(2, '0');
   const mm = String(d.getMonth() + 1).padStart(2, '0');
   const yyyy = String(d.getFullYear());
-  return `${dd}/${mm}/${yyyy}`;
+  switch (dateChars) {
+    case 10: return `${dd}/${mm}/${yyyy}`;
+    case 7:  return `${mm}/${yyyy}`;
+    case 4:  return yyyy;
+  }
 }
 
 /**

@@ -2909,6 +2909,26 @@ button { font: inherit; }
   flex-direction: column;
   min-width: 0;
   background: var(--bg);
+  position: relative;   /* anchor for absolutely-positioned BlameResizer */
+}
+
+/* Drag handle for the blame gutter width. Invisible by default, lights up
+ * with the accent color on hover so it's discoverable without being noisy. */
+.blame-resizer {
+  position: absolute;
+  top: 52px;                  /* clear the diff-context header strip */
+  bottom: 0;
+  width: 6px;
+  margin-left: -3px;          /* center the hit-zone on the gutter edge */
+  cursor: col-resize;
+  z-index: 4;
+  background: transparent;
+  transition: background 0.1s;
+}
+.blame-resizer:hover,
+.blame-resizer:active {
+  background: var(--accent);
+  opacity: 0.5;
 }
 .diff-context {
   display: flex;
