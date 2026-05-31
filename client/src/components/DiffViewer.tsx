@@ -160,9 +160,10 @@ export function DiffViewer({ file, position }: Props) {
           const real = oldLineMap[n - 1];
           return real ? String(real) : '⋯';
         },
-        // Match the modified-side gutter width so split mode looks even
-        // and Monaco doesn't push one pane against the divider.
-        lineNumbersMinChars: blameReady ? 32 : 4,
+        // Original side doesn't render blame — keep it narrow. Earlier
+        // attempt at matching the modified-side width left a huge empty
+        // stripe on the left of the diff.
+        lineNumbersMinChars: 4,
       });
     }
     // Single-editor mode (added/deleted file)
@@ -492,6 +493,14 @@ function shortAuthorPadded(name: string | null, login: string | null, width: num
   } else if (login) {
     label = login;
   }
+
+  // Replace ASCII hyphens with U+2011 NON-BREAKING HYPHEN. Visually
+  // identical, but Monaco's gutter would otherwise treat the hyphen as
+  // a soft word-break boundary, splitting names like "matan-meshi" so
+  // only the "meshi" half ended up rendered on certain rows. With a
+  // non-breaking hyphen the name stays one token and renders intact.
+  label = label.replace(/-/g, '‑');
+
   if (label.length === width) return label;
   if (label.length < width) return label.padEnd(width, NBSP);
   return label.slice(0, width - 2) + '..';
