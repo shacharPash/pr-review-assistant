@@ -2947,6 +2947,36 @@ button { font: inherit; }
 .monaco-editor .line-numbers.blame-age-unknown {
   background: rgba(110, 118, 129, 0.18) !important;
 }
+
+/* Context-expand button — small GitHub-style "↑ Expand 10" / "↓ Expand 10"
+ * chips that splice unchanged file context into a hunk on click. Anchored
+ * to the hunk's first and last Monaco lines via content widgets. */
+.expand-context-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px;
+  margin: 2px 0 2px 4px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--fg-dim);
+  font-size: 10px;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
+}
+.expand-context-btn:hover {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.expand-context-btn .ec-icon {
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
 /* Hunk-separator marker — Monaco renders ⋯ in the gutter for rows that
  * sit between two visible hunks (so the reader sees the discontinuity
  * instead of an unexplained blank line). Dim it so it doesn't compete

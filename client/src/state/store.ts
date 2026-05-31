@@ -70,9 +70,15 @@ interface State {
   reviewComments: PRComments | null;
   reviewCommentsStatus: 'idle' | 'loading' | 'ready' | 'error';
   reviewCommentsError?: string;
+  /** Per-file, per-hunk context-line expansion ("↑ 10 more" / "↓ 10 more"). */
+  hunkExpansions: Record<string, Record<number, HunkExpansion>>;
   loadPR: (ref: string) => Promise<void>;
   selectScope: (scope: SelectedScope) => Promise<void>;
   fetchReviewComments: () => Promise<void>;
+  /** Expand context lines around a hunk by N lines, in the given direction. */
+  expandHunk: (path: string, hunkIdx: number, direction: 'above' | 'below', amount: number) => void;
+  /** Reset a single hunk's expansion to 0/0. */
+  resetHunkExpansion: (path: string, hunkIdx: number) => void;
   selectFile: (path: string) => void;
   toggleNoise: () => void;
   startTLDR: () => void;
@@ -334,6 +340,7 @@ export const useStore = create<State>((set, get) => ({
   lastReviewedSha: null,
   reviewComments: null,
   reviewCommentsStatus: 'idle',
+  hunkExpansions: {},
 
   async loadPR(ref) {
     set({
@@ -358,6 +365,7 @@ export const useStore = create<State>((set, get) => ({
       reviewComments: null,
       reviewCommentsStatus: 'idle',
       reviewCommentsError: undefined,
+      hunkExpansions: {},
     });
     try {
       const res = await fetch(`/api/pr?ref=${encodeURIComponent(ref)}`);
@@ -452,6 +460,28 @@ export const useStore = create<State>((set, get) => ({
     } catch (err) {
       set({ scopeLoading: false, error: { message: (err as Error).message } });
     }
+  },
+
+  expandHunk(path, hunkIdx, direction, amount) {
+    const cur = get().hunkExpansions[path]?.[hunkIdx] ?? { above: 0, below: 0 };
+    const nextForFile = {
+      ...(get().hunkExpansions[path] ?? {}),
+      [hunkIdx]: {
+        ...cur,
+        [direction]: Math.max(0, cur[direction] + amount),
+      },
+    };
+    set({
+      hunkExpansions: { ...get().hunkExpansions, [path]: nextForFile },
+    });
+  },
+
+  resetHunkExpansion(path, hunkIdx) {
+    const forFile = { ...(get().hunkExpansions[path] ?? {}) };
+    delete forFile[hunkIdx];
+    set({
+      hunkExpansions: { ...get().hunkExpansions, [path]: forFile },
+    });
   },
 
   async fetchReviewComments() {
@@ -765,16 +795,49 @@ function openPersonaStream(
   });
 }
 
+/** Per-hunk context-line expansion (GitHub-style "↑/↓ N more"). */
+export interface HunkExpansion {
+  above: number;
+  below: number;
+}
+
+/** Monaco-line boundaries + remaining-context info for a single hunk after layout. */
+export interface HunkBoundary {
+  hunkIdx: number;
+  /** Monaco line where this hunk's first row sits in the rendered editor. */
+  monacoStartLine: number;
+  /** Monaco line where this hunk's last row sits. */
+  monacoEndLine: number;
+  /** Real file (new-side) line just before this hunk's top (for widget label). */
+  contextAboveLine: number;
+  /** Real file (new-side) line just after this hunk's bottom. */
+  contextBelowLine: number;
+  /** How many more new-side lines are still available to expand above. */
+  canExpandAbove: number;
+  /** How many more new-side lines are still available to expand below. */
+  canExpandBelow: number;
+}
+
 /**
  * Derives Monaco-ready content + line-number maps. Each map array is indexed
  * by (monacoLine - 1) and gives the real file line for that row, or 0 for
  * separator rows (which we render as blank in the gutter).
+ *
+ * When `expansions` and `fullContent` are provided, additional context lines
+ * are spliced in around each hunk (GitHub-style "↑ 10 more" / "↓ 10 more").
+ * Without `fullContent`, expansions are ignored (we have nothing to splice in).
  */
-export function fileContentFor(file: DiffFile, includeNoise: boolean): {
+export function fileContentFor(
+  file: DiffFile,
+  includeNoise: boolean,
+  expansions?: Record<number, HunkExpansion>,
+  fullContent?: { oldContent: string | null; newContent: string | null },
+): {
   oldContent: string;
   newContent: string;
   oldLineMap: number[];
   newLineMap: number[];
+  hunkBoundaries: HunkBoundary[];
 } {
   const hunks = includeNoise ? file.hunks : file.hunks.filter((h) => !h.noise);
 
@@ -782,6 +845,11 @@ export function fileContentFor(file: DiffFile, includeNoise: boolean): {
   const newParts: string[] = [];
   const oldMap: number[] = [];
   const newMap: number[] = [];
+  const boundaries: HunkBoundary[] = [];
+
+  const fullNew = fullContent?.newContent ? fullContent.newContent.split('\n') : null;
+  const fullOld = fullContent?.oldContent ? fullContent.oldContent.split('\n') : null;
+  const exp = expansions ?? {};
 
   hunks.forEach((h, idx) => {
     if (idx > 0) {
@@ -791,6 +859,35 @@ export function fileContentFor(file: DiffFile, includeNoise: boolean): {
       oldMap.push(0);
       newMap.push(0);
     }
+
+    const e = exp[idx] ?? { above: 0, below: 0 };
+
+    // Cap the above-expansion at the gap to the previous hunk (or file top) so
+    // we never overlap with a neighboring hunk. The new-side floor is line 1
+    // (or hunks[idx-1].newStart + hunks[idx-1].newLines if there's a prior hunk).
+    const prev = hunks[idx - 1];
+    const prevEndNew = prev ? prev.newStart + prev.newLines - 1 : 0;
+    const aboveAvail = Math.max(0, h.newStart - 1 - prevEndNew);
+    const actualAbove = Math.min(e.above, aboveAvail);
+    if (actualAbove > 0 && fullNew && fullOld) {
+      const newFloor = h.newStart - actualAbove; // 1-indexed
+      const oldFloor = h.oldStart - actualAbove;
+      for (let i = 0; i < actualAbove; i++) {
+        const nLine = newFloor + i;
+        const oLine = oldFloor + i;
+        if (nLine >= 1 && nLine <= fullNew.length) {
+          newParts.push(fullNew[nLine - 1]);
+          newMap.push(nLine);
+        }
+        if (oLine >= 1 && oLine <= fullOld.length) {
+          oldParts.push(fullOld[oLine - 1]);
+          oldMap.push(oLine);
+        }
+      }
+    }
+
+    const monacoStartLine = newParts.length + 1; // 1-indexed Monaco line
+
     const oldLines = h.oldContent.split('\n');
     const newLines = h.newContent.split('\n');
     oldLines.forEach((line, i) => {
@@ -801,6 +898,40 @@ export function fileContentFor(file: DiffFile, includeNoise: boolean): {
       newParts.push(line);
       newMap.push(h.newStart + i);
     });
+
+    const newEnd = h.newStart + h.newLines - 1;
+    const oldEnd = h.oldStart + h.oldLines - 1;
+    // Cap below-expansion at the gap to the next hunk (or end of file).
+    const next = hunks[idx + 1];
+    const nextStartNew = next ? next.newStart : (fullNew?.length ?? newEnd) + 1;
+    const belowAvail = Math.max(0, nextStartNew - 1 - newEnd);
+    const actualBelow = Math.min(e.below, belowAvail);
+    if (actualBelow > 0 && fullNew && fullOld) {
+      for (let i = 1; i <= actualBelow; i++) {
+        const nLine = newEnd + i;
+        const oLine = oldEnd + i;
+        if (nLine >= 1 && nLine <= fullNew.length) {
+          newParts.push(fullNew[nLine - 1]);
+          newMap.push(nLine);
+        }
+        if (oLine >= 1 && oLine <= fullOld.length) {
+          oldParts.push(fullOld[oLine - 1]);
+          oldMap.push(oLine);
+        }
+      }
+    }
+
+    const monacoEndLine = newParts.length;
+
+    boundaries.push({
+      hunkIdx: idx,
+      monacoStartLine,
+      monacoEndLine,
+      contextAboveLine: Math.max(1, h.newStart - actualAbove - 1),
+      contextBelowLine: newEnd + actualBelow + 1,
+      canExpandAbove: Math.max(0, aboveAvail - actualAbove),
+      canExpandBelow: Math.max(0, belowAvail - actualBelow),
+    });
   });
 
   return {
@@ -808,5 +939,6 @@ export function fileContentFor(file: DiffFile, includeNoise: boolean): {
     newContent: newParts.join('\n'),
     oldLineMap: oldMap,
     newLineMap: newMap,
+    hunkBoundaries: boundaries,
   };
 }

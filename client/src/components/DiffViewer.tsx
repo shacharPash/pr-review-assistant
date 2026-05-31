@@ -24,6 +24,8 @@ export function DiffViewer({ file, position }: Props) {
   const toggleHideReviewerComments = usePrefs((s) => s.toggleHideReviewerComments);
   const reviewComments = useStore((s) => s.reviewComments);
   const reviewerCountOnFile = reviewComments?.inline.filter((c) => c.path === file?.path).length ?? 0;
+  const expansions = useStore((s) => (file ? s.hunkExpansions[file.path] : undefined)) ?? {};
+  const expandHunk = useStore((s) => s.expandHunk);
   const [commentEditor, setCommentEditor] = useState<MonacoEditor.ICodeEditor | null>(null);
   const [blameVisible, setBlameVisible] = useState(false);
 
@@ -62,7 +64,13 @@ export function DiffViewer({ file, position }: Props) {
     newContent: hunkNew,
     oldLineMap,
     newLineMap,
-  } = fileContentFor(file, showNoise);
+    hunkBoundaries,
+  } = fileContentFor(
+    file,
+    showNoise,
+    expansions,
+    fullReady ? { oldContent: fullEntry!.oldContent, newContent: fullEntry!.newContent } : undefined,
+  );
   const oldContent = hasFull ? (fullEntry!.oldContent ?? '') : hunkOld;
   const newContent = hasFull ? (fullEntry!.newContent ?? '') : hunkNew;
 
@@ -149,6 +157,77 @@ export function DiffViewer({ file, position }: Props) {
       });
     }
   }, [commentEditor, otherEditor, blameVisible, blameReady, blameEntry, hasFull, newLineMap, oldLineMap, isDeleted]);
+
+  // Context-expansion content widgets — small "↑ 10 more" / "↓ 10 more"
+  // buttons that splice file context into each hunk on click. Skipped in
+  // full-file mode (the surrounding context is already there).
+  const expandWidgetsRef = useRef<unknown[]>([]);
+  useEffect(() => {
+    if (!commentEditor) return;
+    // Remove any previously-attached widgets first (otherwise stale ones from
+    // a prior render with a different hunk count would stack up).
+    for (const w of expandWidgetsRef.current) {
+      commentEditor.removeContentWidget(w as Parameters<typeof commentEditor.removeContentWidget>[0]);
+    }
+    expandWidgetsRef.current = [];
+    if (hasFull || !fullReady || !file) return;
+
+    const newWidgets: unknown[] = [];
+    hunkBoundaries.forEach((b) => {
+      // Top-of-hunk widget: "↑ Expand"
+      if (b.canExpandAbove > 0) {
+        const node = document.createElement('div');
+        node.className = 'expand-context-btn';
+        node.innerHTML = `<span class="ec-icon">↑</span><span>Expand ${Math.min(10, b.canExpandAbove)}${b.canExpandAbove > 10 ? '' : ' (last)'}</span>`;
+        node.title = `${b.canExpandAbove} more lines available above this hunk`;
+        node.onclick = (e) => {
+          e.stopPropagation();
+          expandHunk(file.path, b.hunkIdx, 'above', 10);
+        };
+        const widget = {
+          getId: () => `pra.expand-above.${b.hunkIdx}`,
+          getDomNode: () => node,
+          getPosition: () => ({
+            position: { lineNumber: b.monacoStartLine, column: 1 },
+            preference: [1 /* ABOVE */],
+          }),
+        };
+        commentEditor.addContentWidget(widget as Parameters<typeof commentEditor.addContentWidget>[0]);
+        newWidgets.push(widget);
+      }
+      // Bottom-of-hunk widget: "↓ Expand"
+      if (b.canExpandBelow > 0) {
+        const node = document.createElement('div');
+        node.className = 'expand-context-btn';
+        node.innerHTML = `<span class="ec-icon">↓</span><span>Expand ${Math.min(10, b.canExpandBelow)}${b.canExpandBelow > 10 ? '' : ' (last)'}</span>`;
+        node.title = `${b.canExpandBelow} more lines available below this hunk`;
+        node.onclick = (e) => {
+          e.stopPropagation();
+          expandHunk(file.path, b.hunkIdx, 'below', 10);
+        };
+        const widget = {
+          getId: () => `pra.expand-below.${b.hunkIdx}`,
+          getDomNode: () => node,
+          getPosition: () => ({
+            position: { lineNumber: b.monacoEndLine, column: 1 },
+            preference: [2 /* BELOW */],
+          }),
+        };
+        commentEditor.addContentWidget(widget as Parameters<typeof commentEditor.addContentWidget>[0]);
+        newWidgets.push(widget);
+      }
+    });
+    expandWidgetsRef.current = newWidgets;
+
+    return () => {
+      for (const w of newWidgets) {
+        if (!commentEditor.getModel()?.isDisposed?.()) {
+          commentEditor.removeContentWidget(w as Parameters<typeof commentEditor.removeContentWidget>[0]);
+        }
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [commentEditor, hasFull, fullReady, file?.path, JSON.stringify(hunkBoundaries)]);
 
   return (
     <div className="diff-pane">
