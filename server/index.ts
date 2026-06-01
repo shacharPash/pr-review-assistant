@@ -18,6 +18,7 @@ import { blameRouter } from './routes/blame.js';
 import { scopedDiffRouter } from './routes/scopedDiff.js';
 import { reviewCommentsRouter } from './routes/reviewComments.js';
 import { healthRouter } from './routes/health.js';
+import { checksRouter } from './routes/checks.js';
 import { checkHealth } from './services/healthCheck.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -54,6 +55,7 @@ async function main() {
   app.use(scopedDiffRouter);
   app.use(reviewCommentsRouter);
   app.use(healthRouter);
+  app.use(checksRouter);
 
   if (isDev) {
     const vite = await createViteServer({
