@@ -39,4 +39,28 @@ describe('detectJiraKeys', () => {
   it('skips inputs that are just numbers / non-words', () => {
     expect(detectJiraKeys('123', '!@#', '   ')).toEqual([]);
   });
+
+  describe('sub-ID dedup', () => {
+    it('drops a key that is a numeric prefix of another detected key', () => {
+      // PROJ-196 should be suppressed when PROJ-196023 is also present.
+      expect(
+        detectJiraKeys('Fixes PROJ-196023 — see also PROJ-196'),
+      ).toEqual(['PROJ-196023']);
+    });
+
+    it('keeps unrelated keys with different numeric values', () => {
+      expect(
+        detectJiraKeys('Touches PROJ-123 and PROJ-456'),
+      ).toEqual(['PROJ-123', 'PROJ-456']);
+    });
+
+    it('does not cross-suppress between different projects', () => {
+      // PROJ-1 is not a prefix of ABC-1 — both kept.
+      expect(detectJiraKeys('PROJ-1 ABC-1')).toEqual(['PROJ-1', 'ABC-1']);
+    });
+
+    it('handles longer chains (A is prefix of B is prefix of C)', () => {
+      expect(detectJiraKeys('PROJ-12 PROJ-12345 PROJ-1')).toEqual(['PROJ-12345']);
+    });
+  });
 });

@@ -194,4 +194,4 @@ CI runs on every PR (typecheck + tests + build). Pure-function services have uni
 
 ## License
 
-Private repo. Reach out if you want access or want to contribute.
+MIT — see [LICENSE](LICENSE). Issues and PRs welcome.
