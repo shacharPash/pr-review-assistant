@@ -15,6 +15,8 @@ interface Preferences {
   summaryHeight: number;
   /** Suppress all reviewer/bot inline comments in the diff. */
   hideReviewerComments: boolean;
+  /** Blame gutter width in CHARACTERS (only used when blame is visible). */
+  blameWidth: number;
   setTheme: (t: Theme) => void;
   setViewMode: (m: ViewMode) => void;
   toggleTLDR: () => void;
@@ -22,7 +24,17 @@ interface Preferences {
   setRailWidth: (px: number) => void;
   setSummaryHeight: (px: number) => void;
   toggleHideReviewerComments: () => void;
+  setBlameWidth: (chars: number) => void;
 }
+
+const BLAME_WIDTH_KEY = 'pra.blameWidth';
+const BLAME_WIDTH_MIN = 10;
+const BLAME_WIDTH_MAX = 50;
+// 29 = date(10) + 2 sep + author(11) + 2 sep + 4 line# — fits common names
+// (ShaharPash, mariaKull, matan-meshi, shacharPash) without leaving the
+// awkward gap that the 32-default with author(14) created. Drag wider to
+// fit longer logins; double-click the handle to snap back to default.
+const BLAME_WIDTH_DEFAULT = 29;
 
 const RAIL_WIDTH_KEY = 'pra.railWidth';
 const RAIL_WIDTH_MIN = 280;
@@ -73,6 +85,13 @@ export const usePrefs = create<Preferences>((set, get) => ({
   hideReviewerComments: typeof window !== 'undefined'
     ? window.localStorage.getItem(HIDE_REVIEWER_KEY) === '1'
     : false,
+  blameWidth: (() => {
+    if (typeof window === 'undefined') return BLAME_WIDTH_DEFAULT;
+    const raw = window.localStorage.getItem(BLAME_WIDTH_KEY);
+    const n = raw ? Number(raw) : NaN;
+    if (!Number.isFinite(n)) return BLAME_WIDTH_DEFAULT;
+    return Math.max(BLAME_WIDTH_MIN, Math.min(BLAME_WIDTH_MAX, n));
+  })(),
   summaryHeight: (() => {
     if (typeof window === 'undefined') return SUMMARY_HEIGHT_DEFAULT;
     const raw = window.localStorage.getItem(SUMMARY_HEIGHT_KEY);
@@ -131,6 +150,14 @@ export const usePrefs = create<Preferences>((set, get) => ({
     set({ hideReviewerComments: next });
     if (typeof window !== 'undefined') {
       window.localStorage.setItem(HIDE_REVIEWER_KEY, next ? '1' : '0');
+    }
+  },
+
+  setBlameWidth(chars) {
+    const clamped = Math.max(BLAME_WIDTH_MIN, Math.min(BLAME_WIDTH_MAX, Math.round(chars)));
+    set({ blameWidth: clamped });
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(BLAME_WIDTH_KEY, String(clamped));
     }
   },
 }));
