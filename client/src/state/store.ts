@@ -411,6 +411,13 @@ export const useStore = create<State>((set, get) => ({
         lineComments,
         lastReviewedSha,
       });
+      // Reflect the loaded PR in the URL so refresh / share-link both work.
+      // Uses replaceState (no back-button history entry) for simplicity —
+      // entering a new PR just overwrites the previous one in the URL.
+      if (typeof window !== 'undefined') {
+        const shorthand = `${bundle.meta.owner}/${bundle.meta.repo}#${bundle.meta.number}`;
+        window.history.replaceState(null, '', `/?pr=${encodeURIComponent(shorthand)}`);
+      }
       openTLDRStream(bundle, set);
       openHeadlineStream(bundle, set);
       openDiagramStream(bundle, set);
