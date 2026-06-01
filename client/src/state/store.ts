@@ -84,6 +84,8 @@ interface State {
   fetchChecks: () => Promise<void>;
   /** Running total of Claude tokens used for the current PR session. Resets on loadPR. */
   tokenUsage: TokenUsage;
+  /** Add a usage delta — for one-shot endpoints that can't use the SSE listener. */
+  recordUsage: (u: TokenUsage) => void;
   /** Status of the external CLIs (gh, claude); used by the setup banner. */
   health: {
     status: 'idle' | 'loading' | 'ready';
@@ -597,6 +599,10 @@ export const useStore = create<State>((set, get) => ({
         reviewCommentsError: (err as Error).message,
       });
     }
+  },
+
+  recordUsage(u) {
+    set((s) => ({ tokenUsage: addUsage(s.tokenUsage, u) }));
   },
 
   async fetchChecks() {

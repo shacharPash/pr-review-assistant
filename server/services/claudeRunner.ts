@@ -164,14 +164,9 @@ export class ClaudeRunner {
       } else {
         this.lastText = final;
       }
-      const usage = event.usage;
+      const usage = normalizeClaudeUsage(event.usage);
       if (usage && this.events.onUsage) {
-        this.events.onUsage({
-          input: usage.input_tokens ?? 0,
-          output: usage.output_tokens ?? 0,
-          cacheRead: usage.cache_read_input_tokens ?? 0,
-          cacheCreation: usage.cache_creation_input_tokens ?? 0,
-        });
+        this.events.onUsage(usage);
       }
     }
   }
@@ -186,6 +181,21 @@ interface ClaudeUsage {
   output_tokens?: number;
   cache_read_input_tokens?: number;
   cache_creation_input_tokens?: number;
+}
+
+/**
+ * Normalize Claude's snake_case usage block into the camelCase shape the
+ * client store consumes. Exported so non-streaming callers (aiComment)
+ * can share the same parsing and avoid drift.
+ */
+export function normalizeClaudeUsage(raw: ClaudeUsage | undefined): TokenUsage | null {
+  if (!raw) return null;
+  return {
+    input: raw.input_tokens ?? 0,
+    output: raw.output_tokens ?? 0,
+    cacheRead: raw.cache_read_input_tokens ?? 0,
+    cacheCreation: raw.cache_creation_input_tokens ?? 0,
+  };
 }
 interface ClaudeEvent {
   type: string;
