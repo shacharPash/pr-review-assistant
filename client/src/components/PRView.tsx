@@ -7,6 +7,7 @@ import { TLDRPanel } from './TLDRPanel.js';
 import { TLDRResizer } from './TLDRResizer.js';
 import { RailResizer } from './RailResizer.js';
 import { ReviewFooter } from './ReviewFooter.js';
+import { LandingHero } from './LandingHero.js';
 
 export function PRView() {
   const bundle = useStore((s) => s.bundle);
@@ -39,17 +40,7 @@ export function PRView() {
   }
 
   if (!bundle) {
-    return (
-      <div className="empty-state">
-        <div className="empty-inner">
-          <h2>Open a pull request</h2>
-          <p>Paste a GitHub PR URL above. The TL;DR streams while you wait — risk and blast radius first, code second.</p>
-          <div className="hint">
-            Requires <strong>gh</strong> CLI authenticated, plus <strong>claude</strong> for the AI summary.
-          </div>
-        </div>
-      </div>
-    );
+    return <LandingHero />;
   }
 
   // Clamp the rail to at most ~50% of the viewport so a wide rail set on a

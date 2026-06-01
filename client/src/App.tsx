@@ -62,7 +62,7 @@ export function App() {
           <span className="dot" />
           PR Review Assistant
         </span>
-        <PRInput />
+        {bundle && <PRInput />}
         {bundle && (
           <div className="header-meta">
             <span className="pr-num">#{bundle.meta.number}</span>
