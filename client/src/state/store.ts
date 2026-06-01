@@ -167,13 +167,13 @@ type StoreSetter = (
 ) => void;
 
 /**
- * Returns the `&model=...` suffix to append when the user picked a non-auto
- * model. Captured at stream-open time so in-flight streams keep their model
- * even if the picker changes mid-flight.
+ * Returns the `&mode=fast|smart` suffix to append to a stream URL. The server
+ * maps the mode to a per-route model (Opus on heavy routes when smart;
+ * Sonnet on light routes regardless). Captured at stream-open time so a
+ * mid-flight stream keeps its mode even if the picker changes.
  */
-function modelParam(): string {
-  const pref = usePrefs.getState().modelPreference;
-  return pref === 'auto' ? '' : `&model=${pref}`;
+function modeParam(): string {
+  return `&mode=${usePrefs.getState().modelPreference}`;
 }
 
 function attachUsageListener(es: EventSource, set: StoreSetter): void {
@@ -196,7 +196,7 @@ function openComplexityStream(bundle: PRBundle, set: StoreSetter) {
     `&repo=${encodeURIComponent(bundle.meta.repo)}` +
     `&number=${bundle.meta.number}` +
     `&headSha=${bundle.meta.headSha}` +
-    modelParam();
+    modeParam();
   const es = new EventSource(url);
   complexityEventSource = es;
   set({ complexity: { text: '', status: 'streaming' } });
@@ -231,7 +231,7 @@ function openBeforeAfterStream(bundle: PRBundle, set: StoreSetter) {
     `&repo=${encodeURIComponent(bundle.meta.repo)}` +
     `&number=${bundle.meta.number}` +
     `&headSha=${bundle.meta.headSha}` +
-    modelParam();
+    modeParam();
   const es = new EventSource(url);
   beforeAfterEventSource = es;
   set({ beforeAfter: { text: '', status: 'streaming' } });
@@ -266,7 +266,7 @@ function openDiagramStream(bundle: PRBundle, set: StoreSetter) {
     `&repo=${encodeURIComponent(bundle.meta.repo)}` +
     `&number=${bundle.meta.number}` +
     `&headSha=${bundle.meta.headSha}` +
-    modelParam();
+    modeParam();
   const es = new EventSource(url);
   diagramEventSource = es;
   set({ diagram: { text: '', status: 'streaming' } });
@@ -301,7 +301,7 @@ function openHeadlineStream(bundle: PRBundle, set: StoreSetter) {
     `&repo=${encodeURIComponent(bundle.meta.repo)}` +
     `&number=${bundle.meta.number}` +
     `&headSha=${bundle.meta.headSha}` +
-    modelParam();
+    modeParam();
   const es = new EventSource(url);
   headlineEventSource = es;
   set({ headline: { text: '', status: 'streaming' } });
@@ -338,7 +338,7 @@ function openTLDRStream(bundle: PRBundle, set: StoreSetter) {
     `&repo=${encodeURIComponent(bundle.meta.repo)}` +
     `&number=${bundle.meta.number}` +
     `&headSha=${bundle.meta.headSha}` +
-    modelParam();
+    modeParam();
   const es = new EventSource(url);
   tldrEventSource = es;
   set({ tldr: { text: '', status: 'streaming' } });
@@ -872,7 +872,7 @@ function openPersonaStream(
     `&number=${bundle.meta.number}` +
     `&headSha=${bundle.meta.headSha}` +
     `&persona=${encodeURIComponent(id)}` +
-    modelParam();
+    modeParam();
   const es = new EventSource(url);
   personaEventSources.set(id, es);
   set({ personaResults: { ...get().personaResults, [id]: { text: '', status: 'streaming' } } });

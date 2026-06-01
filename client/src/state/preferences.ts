@@ -3,13 +3,19 @@ import { create } from 'zustand';
 export type Theme = 'github' | 'intellij' | 'vscode';
 export type ViewMode = 'split' | 'unified';
 /**
- * Which Claude model to use for AI features.
- * - `auto`  — defer to each route's hardcoded choice (Sonnet for short outputs,
- *             CLI default for the main TL;DR/before-after/diagram)
- * - `sonnet` — force Sonnet everywhere; fast, ~3× cheaper, good enough for most PRs
- * - `opus`   — force Opus everywhere; smarter on dense logic but slow/expensive
+ * Reviewer's quality/speed tier for AI features. The server maps this to
+ * a per-route model so we don't waste Opus on one-word outputs.
+ *
+ * - `fast`  — Sonnet everywhere. Cheap, snappy, fine for routine PRs.
+ * - `smart` — Opus on the routes where reasoning matters (TL;DR + diagram);
+ *             Sonnet on short outputs (headline / before-after / complexity /
+ *             persona tabs) because Opus adds no quality there.
+ *
+ * This deliberately replaces the older 'auto' option, whose meaning silently
+ * depended on each user's `claude` CLI config and produced inconsistent token
+ * bills across teammates.
  */
-export type ModelPreference = 'auto' | 'sonnet' | 'opus';
+export type ModelPreference = 'fast' | 'smart';
 
 interface Preferences {
   theme: Theme;
@@ -97,11 +103,17 @@ export const usePrefs = create<Preferences>((set, get) => ({
   hideReviewerComments: typeof window !== 'undefined'
     ? window.localStorage.getItem(HIDE_REVIEWER_KEY) === '1'
     : false,
-  modelPreference: readLS<ModelPreference>(
-    MODEL_PREF_KEY,
-    'auto',
-    ['auto', 'sonnet', 'opus'] as const,
-  ),
+  modelPreference: (() => {
+    if (typeof window === 'undefined') return 'smart' as ModelPreference;
+    const raw = window.localStorage.getItem(MODEL_PREF_KEY);
+    // Migrate the prior 3-pill values:
+    //   auto / opus  → smart  (closest to what they were getting)
+    //   sonnet       → fast
+    // Anything else (or nothing) defaults to 'smart' so new users see the
+    // tool's strongest reasoning on TL;DR + diagram out of the box.
+    if (raw === 'fast' || raw === 'sonnet') return 'fast';
+    return 'smart';
+  })(),
   blameWidth: (() => {
     if (typeof window === 'undefined') return BLAME_WIDTH_DEFAULT;
     const raw = window.localStorage.getItem(BLAME_WIDTH_KEY);

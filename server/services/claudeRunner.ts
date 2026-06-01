@@ -22,13 +22,25 @@ export interface RunOptions {
 }
 
 /**
- * Validate a `?model=...` query value and return it if it's a known alias.
- * Returns undefined for anything else (including 'auto'), which signals to
- * the caller: "fall back to the route's per-feature default".
+ * Routes self-declare which tier they belong to so the model picker can be
+ * defined in one place. Heavy = routes where stronger reasoning genuinely
+ * moves quality (TL;DR, diagram). Light = short outputs where Opus would
+ * just burn tokens (headline, before-after, complexity, persona tabs).
  */
-export function validateModelParam(raw: unknown): RunOptions['model'] {
-  if (typeof raw !== 'string') return undefined;
-  return raw === 'sonnet' || raw === 'opus' || raw === 'haiku' ? raw : undefined;
+export type RouteTier = 'heavy' | 'light';
+export type AIMode = 'fast' | 'smart';
+
+/**
+ * Resolve `?mode=fast|smart` to an actual Claude model based on the route's
+ * tier. Smart upgrades heavy routes to Opus and leaves light routes on
+ * Sonnet — never Opus for short outputs, regardless of mode. Unknown or
+ * missing values fall back to 'smart' so the demo still works if the URL
+ * is hand-crafted.
+ */
+export function pickModel(rawMode: unknown, tier: RouteTier): RunOptions['model'] {
+  const mode: AIMode = rawMode === 'fast' ? 'fast' : 'smart';
+  if (tier === 'light') return 'sonnet';
+  return mode === 'smart' ? 'opus' : 'sonnet';
 }
 
 export interface RunnerEvents {

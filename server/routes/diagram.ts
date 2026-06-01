@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from 'express';
-import { ClaudeRunner, validateModelParam } from '../services/claudeRunner.js';
+import { ClaudeRunner, pickModel } from '../services/claudeRunner.js';
 import { getBundle, getDiagram, setDiagram } from '../services/cache.js';
 
 export const diagramRouter = Router();
@@ -90,6 +90,5 @@ diagramRouter.get('/api/diagram/stream', (req: Request, res: Response) => {
   });
 
   req.on('close', () => runner.abort());
-  const model = validateModelParam(req.query.model);
-  runner.start(bundle, { systemPrompt: DIAGRAM_PROMPT, ...(model ? { model } : {}) });
+  runner.start(bundle, { systemPrompt: DIAGRAM_PROMPT, model: pickModel(req.query.mode, 'heavy') });
 });

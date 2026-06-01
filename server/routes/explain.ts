@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from 'express';
-import { ClaudeRunner, validateModelParam } from '../services/claudeRunner.js';
+import { ClaudeRunner, pickModel } from '../services/claudeRunner.js';
 import { getBundle, getExplanation, setExplanation } from '../services/cache.js';
 import { findPersona } from '../../shared/personas.js';
 
@@ -70,9 +70,7 @@ explainRouter.get('/api/explain/stream', (req: Request, res: Response) => {
   });
 
   req.on('close', () => runner.abort());
-  // Short-form personas (tweet, plain-english, checklist) don't need deep
-  // code reasoning — Sonnet is plenty and 2-3× faster than the user's
-  // default (often Opus). User can override via ?model.
-  const model = validateModelParam(req.query.model) ?? 'sonnet';
-  runner.start(bundle, { systemPrompt: persona.prompt, model });
+  // Light route: the personas (plain-english, tweet, checklist) are all
+  // short reformulations of the diff. Opus adds no quality here.
+  runner.start(bundle, { systemPrompt: persona.prompt, model: pickModel(req.query.mode, 'light') });
 });

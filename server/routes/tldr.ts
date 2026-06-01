@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from 'express';
-import { ClaudeRunner, validateModelParam } from '../services/claudeRunner.js';
+import { ClaudeRunner, pickModel } from '../services/claudeRunner.js';
 import { getBundle, getTLDR, setTLDR } from '../services/cache.js';
 
 export const tldrRouter = Router();
@@ -67,8 +67,6 @@ tldrRouter.get('/api/tldr/stream', (req: Request, res: Response) => {
     runner.abort();
   });
 
-  const model = validateModelParam(req.query.model);
-  // TL;DR is the most important AI surface — it justifies Opus when the user
-  // explicitly asks for it. Default (no model passed) keeps the CLI default.
-  runner.start(bundle, model ? { model } : {});
+  // TL;DR is a heavy route: Opus when Smart, Sonnet when Fast.
+  runner.start(bundle, { model: pickModel(req.query.mode, 'heavy') });
 });

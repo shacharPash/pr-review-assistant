@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from 'express';
-import { ClaudeRunner, validateModelParam } from '../services/claudeRunner.js';
+import { ClaudeRunner, pickModel } from '../services/claudeRunner.js';
 import { getBundle, getHeadline, setHeadline } from '../services/cache.js';
 
 export const headlineRouter = Router();
@@ -69,9 +69,7 @@ headlineRouter.get('/api/headline/stream', (req: Request, res: Response) => {
   });
 
   req.on('close', () => runner.abort());
-  // Headline is one short sentence — Sonnet is plenty smart for it and is
-  // 2-3× faster than Opus, which is the user's CLI default and the actual
-  // driver of "the headline is slow" complaints. User can override via ?model.
-  const model = validateModelParam(req.query.model) ?? 'sonnet';
-  runner.start(bundle, { systemPrompt: HEADLINE_PROMPT, model });
+  // Headline is a light route — one short sentence. Opus adds no quality;
+  // Sonnet wins on speed and cost regardless of mode.
+  runner.start(bundle, { systemPrompt: HEADLINE_PROMPT, model: pickModel(req.query.mode, 'light') });
 });

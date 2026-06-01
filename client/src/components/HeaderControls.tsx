@@ -9,13 +9,12 @@ export function HeaderControls() {
     <div className="controls">
       <TokenBadge />
       <SegmentedControl<ModelPreference>
-        label="AI model"
+        label="AI mode"
         value={modelPreference}
         onChange={setModelPreference}
         options={[
-          { value: 'sonnet', label: 'Fast', title: 'Sonnet — fast, cheap, good enough for most PRs' },
-          { value: 'opus', label: 'Smart', title: 'Opus — slower and pricier; better on dense logic' },
-          { value: 'auto', label: 'Auto', title: 'Per-feature defaults (Sonnet for short outputs, CLI default for the rest)' },
+          { value: 'fast', label: 'Fast', title: 'Sonnet on every AI feature — cheap and snappy, fine for routine PRs' },
+          { value: 'smart', label: 'Smart', title: 'Opus on TL;DR + diagram (where reasoning helps); Sonnet on the short outputs' },
         ]}
       />
     </div>
