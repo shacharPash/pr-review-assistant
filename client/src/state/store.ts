@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { PRBundle, DiffFile, TLDR, BlameRange } from '@shared/types';
 import type { PersonaId } from '@shared/personas';
 import type { PRComments } from '@shared/reviewComments';
+import type { CheckRun } from '@shared/checks';
 
 export interface FullFileContent {
   status: 'loading' | 'ready' | 'error';
@@ -72,6 +73,13 @@ interface State {
   reviewCommentsError?: string;
   /** Per-file, per-hunk context-line expansion ("↑ 10 more" / "↓ 10 more"). */
   hunkExpansions: Record<string, Record<number, HunkExpansion>>;
+  /** GitHub Actions check status for the current PR. */
+  checks: {
+    status: 'idle' | 'loading' | 'ready' | 'error';
+    runs: CheckRun[];
+    error?: string;
+  };
+  fetchChecks: () => Promise<void>;
   /** Status of the external CLIs (gh, claude); used by the setup banner. */
   health: {
     status: 'idle' | 'loading' | 'ready';
@@ -356,6 +364,7 @@ export const useStore = create<State>((set, get) => ({
   reviewCommentsStatus: 'idle',
   hunkExpansions: {},
   health: { status: 'idle', ok: true, dependencies: [] },
+  checks: { status: 'idle', runs: [] },
 
   async loadPR(ref) {
     set({
@@ -381,6 +390,7 @@ export const useStore = create<State>((set, get) => ({
       reviewCommentsStatus: 'idle',
       reviewCommentsError: undefined,
       hunkExpansions: {},
+      checks: { status: 'idle', runs: [] },
     });
     try {
       const res = await fetch(`/api/pr?ref=${encodeURIComponent(ref)}`);
@@ -425,6 +435,8 @@ export const useStore = create<State>((set, get) => ({
       openComplexityStream(bundle, set);
       // Reviewer/bot comments — non-blocking; UI shows once they arrive.
       get().fetchReviewComments();
+      // CI status — non-blocking; header pill shows once it arrives.
+      get().fetchChecks();
       if (firstVisible) {
         get().fetchFullContent(firstVisible.path);
         get().fetchBlame(firstVisible.path);
@@ -543,6 +555,26 @@ export const useStore = create<State>((set, get) => ({
         reviewCommentsStatus: 'error',
         reviewCommentsError: (err as Error).message,
       });
+    }
+  },
+
+  async fetchChecks() {
+    const { bundle } = get();
+    if (!bundle) return;
+    set({ checks: { status: 'loading', runs: [] } });
+    try {
+      const url = `/api/pr/checks?owner=${encodeURIComponent(bundle.meta.owner)}` +
+        `&repo=${encodeURIComponent(bundle.meta.repo)}` +
+        `&number=${bundle.meta.number}`;
+      const res = await fetch(url);
+      const data = await res.json();
+      if (!res.ok) {
+        set({ checks: { status: 'error', runs: [], error: data.error ?? 'Failed to load checks.' } });
+        return;
+      }
+      set({ checks: { status: 'ready', runs: (data.runs ?? []) as CheckRun[] } });
+    } catch (err) {
+      set({ checks: { status: 'error', runs: [], error: (err as Error).message } });
     }
   },
 
