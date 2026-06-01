@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from 'express';
-import { ClaudeRunner } from '../services/claudeRunner.js';
+import { ClaudeRunner, validateModelParam } from '../services/claudeRunner.js';
 import { getBundle, getExplanation, setExplanation } from '../services/cache.js';
 import { findPersona } from '../../shared/personas.js';
 
@@ -72,6 +72,7 @@ explainRouter.get('/api/explain/stream', (req: Request, res: Response) => {
   req.on('close', () => runner.abort());
   // Short-form personas (tweet, plain-english, checklist) don't need deep
   // code reasoning — Sonnet is plenty and 2-3× faster than the user's
-  // default (often Opus). Keeps the TLDR panel feeling responsive.
-  runner.start(bundle, { systemPrompt: persona.prompt, model: 'sonnet' });
+  // default (often Opus). User can override via ?model.
+  const model = validateModelParam(req.query.model) ?? 'sonnet';
+  runner.start(bundle, { systemPrompt: persona.prompt, model });
 });

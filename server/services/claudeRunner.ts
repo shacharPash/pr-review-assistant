@@ -21,6 +21,16 @@ export interface RunOptions {
   model?: string;
 }
 
+/**
+ * Validate a `?model=...` query value and return it if it's a known alias.
+ * Returns undefined for anything else (including 'auto'), which signals to
+ * the caller: "fall back to the route's per-feature default".
+ */
+export function validateModelParam(raw: unknown): RunOptions['model'] {
+  if (typeof raw !== 'string') return undefined;
+  return raw === 'sonnet' || raw === 'opus' || raw === 'haiku' ? raw : undefined;
+}
+
 export interface RunnerEvents {
   onChunk: (delta: string) => void;
   onDone: (fullText: string) => void;

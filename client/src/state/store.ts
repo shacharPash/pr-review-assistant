@@ -4,6 +4,7 @@ import type { PersonaId } from '@shared/personas';
 import type { PRComments } from '@shared/reviewComments';
 import type { CheckRun } from '@shared/checks';
 import { EMPTY_USAGE, addUsage, type TokenUsage } from '@shared/usage';
+import { usePrefs } from './preferences.js';
 
 export interface FullFileContent {
   status: 'loading' | 'ready' | 'error';
@@ -165,6 +166,16 @@ type StoreSetter = (
   partial: Partial<State> | ((state: State) => Partial<State>),
 ) => void;
 
+/**
+ * Returns the `&model=...` suffix to append when the user picked a non-auto
+ * model. Captured at stream-open time so in-flight streams keep their model
+ * even if the picker changes mid-flight.
+ */
+function modelParam(): string {
+  const pref = usePrefs.getState().modelPreference;
+  return pref === 'auto' ? '' : `&model=${pref}`;
+}
+
 function attachUsageListener(es: EventSource, set: StoreSetter): void {
   es.addEventListener('usage', (e: MessageEvent) => {
     try {
@@ -184,7 +195,8 @@ function openComplexityStream(bundle: PRBundle, set: StoreSetter) {
   const url = `/api/complexity/stream?owner=${encodeURIComponent(bundle.meta.owner)}` +
     `&repo=${encodeURIComponent(bundle.meta.repo)}` +
     `&number=${bundle.meta.number}` +
-    `&headSha=${bundle.meta.headSha}`;
+    `&headSha=${bundle.meta.headSha}` +
+    modelParam();
   const es = new EventSource(url);
   complexityEventSource = es;
   set({ complexity: { text: '', status: 'streaming' } });
@@ -218,7 +230,8 @@ function openBeforeAfterStream(bundle: PRBundle, set: StoreSetter) {
   const url = `/api/before-after/stream?owner=${encodeURIComponent(bundle.meta.owner)}` +
     `&repo=${encodeURIComponent(bundle.meta.repo)}` +
     `&number=${bundle.meta.number}` +
-    `&headSha=${bundle.meta.headSha}`;
+    `&headSha=${bundle.meta.headSha}` +
+    modelParam();
   const es = new EventSource(url);
   beforeAfterEventSource = es;
   set({ beforeAfter: { text: '', status: 'streaming' } });
@@ -252,7 +265,8 @@ function openDiagramStream(bundle: PRBundle, set: StoreSetter) {
   const url = `/api/diagram/stream?owner=${encodeURIComponent(bundle.meta.owner)}` +
     `&repo=${encodeURIComponent(bundle.meta.repo)}` +
     `&number=${bundle.meta.number}` +
-    `&headSha=${bundle.meta.headSha}`;
+    `&headSha=${bundle.meta.headSha}` +
+    modelParam();
   const es = new EventSource(url);
   diagramEventSource = es;
   set({ diagram: { text: '', status: 'streaming' } });
@@ -286,7 +300,8 @@ function openHeadlineStream(bundle: PRBundle, set: StoreSetter) {
   const url = `/api/headline/stream?owner=${encodeURIComponent(bundle.meta.owner)}` +
     `&repo=${encodeURIComponent(bundle.meta.repo)}` +
     `&number=${bundle.meta.number}` +
-    `&headSha=${bundle.meta.headSha}`;
+    `&headSha=${bundle.meta.headSha}` +
+    modelParam();
   const es = new EventSource(url);
   headlineEventSource = es;
   set({ headline: { text: '', status: 'streaming' } });
@@ -322,7 +337,8 @@ function openTLDRStream(bundle: PRBundle, set: StoreSetter) {
   const url = `/api/tldr/stream?owner=${encodeURIComponent(bundle.meta.owner)}` +
     `&repo=${encodeURIComponent(bundle.meta.repo)}` +
     `&number=${bundle.meta.number}` +
-    `&headSha=${bundle.meta.headSha}`;
+    `&headSha=${bundle.meta.headSha}` +
+    modelParam();
   const es = new EventSource(url);
   tldrEventSource = es;
   set({ tldr: { text: '', status: 'streaming' } });
@@ -855,7 +871,8 @@ function openPersonaStream(
     `&repo=${encodeURIComponent(bundle.meta.repo)}` +
     `&number=${bundle.meta.number}` +
     `&headSha=${bundle.meta.headSha}` +
-    `&persona=${encodeURIComponent(id)}`;
+    `&persona=${encodeURIComponent(id)}` +
+    modelParam();
   const es = new EventSource(url);
   personaEventSources.set(id, es);
   set({ personaResults: { ...get().personaResults, [id]: { text: '', status: 'streaming' } } });

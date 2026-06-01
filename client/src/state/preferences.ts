@@ -2,6 +2,14 @@ import { create } from 'zustand';
 
 export type Theme = 'github' | 'intellij' | 'vscode';
 export type ViewMode = 'split' | 'unified';
+/**
+ * Which Claude model to use for AI features.
+ * - `auto`  — defer to each route's hardcoded choice (Sonnet for short outputs,
+ *             CLI default for the main TL;DR/before-after/diagram)
+ * - `sonnet` — force Sonnet everywhere; fast, ~3× cheaper, good enough for most PRs
+ * - `opus`   — force Opus everywhere; smarter on dense logic but slow/expensive
+ */
+export type ModelPreference = 'auto' | 'sonnet' | 'opus';
 
 interface Preferences {
   theme: Theme;
@@ -17,6 +25,8 @@ interface Preferences {
   hideReviewerComments: boolean;
   /** Blame gutter width in CHARACTERS (only used when blame is visible). */
   blameWidth: number;
+  /** Which Claude model to use for AI features. */
+  modelPreference: ModelPreference;
   setTheme: (t: Theme) => void;
   setViewMode: (m: ViewMode) => void;
   toggleTLDR: () => void;
@@ -25,6 +35,7 @@ interface Preferences {
   setSummaryHeight: (px: number) => void;
   toggleHideReviewerComments: () => void;
   setBlameWidth: (chars: number) => void;
+  setModelPreference: (m: ModelPreference) => void;
 }
 
 const BLAME_WIDTH_KEY = 'pra.blameWidth';
@@ -55,6 +66,7 @@ const THEME_KEY = 'pra.theme';
 const MODE_KEY = 'pra.viewMode';
 const TLDR_KEY = 'pra.tldrCollapsed';
 const HIDE_REVIEWER_KEY = 'pra.hideReviewerComments';
+const MODEL_PREF_KEY = 'pra.modelPreference';
 
 function readLS<T extends string>(key: string, fallback: T, allowed: readonly T[]): T {
   if (typeof window === 'undefined') return fallback;
@@ -85,6 +97,11 @@ export const usePrefs = create<Preferences>((set, get) => ({
   hideReviewerComments: typeof window !== 'undefined'
     ? window.localStorage.getItem(HIDE_REVIEWER_KEY) === '1'
     : false,
+  modelPreference: readLS<ModelPreference>(
+    MODEL_PREF_KEY,
+    'auto',
+    ['auto', 'sonnet', 'opus'] as const,
+  ),
   blameWidth: (() => {
     if (typeof window === 'undefined') return BLAME_WIDTH_DEFAULT;
     const raw = window.localStorage.getItem(BLAME_WIDTH_KEY);
@@ -159,6 +176,11 @@ export const usePrefs = create<Preferences>((set, get) => ({
     if (typeof window !== 'undefined') {
       window.localStorage.setItem(BLAME_WIDTH_KEY, String(clamped));
     }
+  },
+
+  setModelPreference(m) {
+    set({ modelPreference: m });
+    if (typeof window !== 'undefined') window.localStorage.setItem(MODEL_PREF_KEY, m);
   },
 }));
 

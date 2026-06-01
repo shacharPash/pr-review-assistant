@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from 'express';
-import { ClaudeRunner } from '../services/claudeRunner.js';
+import { ClaudeRunner, validateModelParam } from '../services/claudeRunner.js';
 import { getBundle, getBeforeAfter, setBeforeAfter } from '../services/cache.js';
 
 export const beforeAfterRouter = Router();
@@ -89,5 +89,6 @@ beforeAfterRouter.get('/api/before-after/stream', (req: Request, res: Response) 
   });
 
   req.on('close', () => runner.abort());
-  runner.start(bundle, { systemPrompt: BEFORE_AFTER_PROMPT });
+  const model = validateModelParam(req.query.model);
+  runner.start(bundle, { systemPrompt: BEFORE_AFTER_PROMPT, ...(model ? { model } : {}) });
 });

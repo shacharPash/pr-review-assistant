@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from 'express';
-import { ClaudeRunner } from '../services/claudeRunner.js';
+import { ClaudeRunner, validateModelParam } from '../services/claudeRunner.js';
 import { getBundle, getComplexity, setComplexity } from '../services/cache.js';
 
 export const complexityRouter = Router();
@@ -91,5 +91,6 @@ complexityRouter.get('/api/complexity/stream', (req: Request, res: Response) => 
   });
 
   req.on('close', () => runner.abort());
-  runner.start(bundle, { systemPrompt: COMPLEXITY_PROMPT });
+  const model = validateModelParam(req.query.model);
+  runner.start(bundle, { systemPrompt: COMPLEXITY_PROMPT, ...(model ? { model } : {}) });
 });
