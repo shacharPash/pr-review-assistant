@@ -8,8 +8,8 @@ describe('parsePRRef', () => {
   });
 
   it('parses an owner/repo#number shorthand', () => {
-    const r = parsePRRef('redislabsdev/cloud-vercel-service#278');
-    expect(r).toEqual({ owner: 'redislabsdev', repo: 'cloud-vercel-service', number: 278 });
+    const r = parsePRRef('cli/cli#13509');
+    expect(r).toEqual({ owner: 'cli', repo: 'cli', number: 13509 });
   });
 
   it('strips trailing .git from the repo segment', () => {
