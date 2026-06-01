@@ -7,7 +7,7 @@ import { HeaderControls } from './components/HeaderControls.js';
 import { SummaryCard } from './components/SummaryCard.js';
 import { SummaryResizer } from './components/SummaryResizer.js';
 import { JiraBadge } from './components/JiraBadge.js';
-import { ShortcutsHelp } from './components/ShortcutsHelp.js';
+import { ChecksBadge } from './components/ChecksBadge.js';
 import { AuthorChip } from './components/AuthorChip.js';
 import { HealthBanner } from './components/HealthBanner.js';
 
@@ -62,7 +62,7 @@ export function App() {
           <span className="dot" />
           PR Review Assistant
         </span>
-        <PRInput />
+        {bundle && <PRInput />}
         {bundle && (
           <div className="header-meta">
             <span className="pr-num">#{bundle.meta.number}</span>
@@ -70,7 +70,7 @@ export function App() {
               {bundle.meta.title}
             </a>
             <AuthorChip />
-            <ShortcutsHelp />
+            <ChecksBadge />
             <JiraBadge />
           </div>
         )}

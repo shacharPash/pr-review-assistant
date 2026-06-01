@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import mermaid from 'mermaid';
 import { useStore } from '../state/store.js';
 import { usePrefs } from '../state/preferences.js';
@@ -195,6 +195,23 @@ interface DiagramModalProps {
 }
 
 function DiagramModal({ source, theme, onClose }: DiagramModalProps) {
+  // Initial size: ~80% of viewport, capped at 1400x900 so it looks reasonable
+  // on big screens. Position: centered. Both are user-mutable from here on.
+  const initial = (() => {
+    const vw = typeof window !== 'undefined' ? window.innerWidth : 1280;
+    const vh = typeof window !== 'undefined' ? window.innerHeight : 800;
+    const width = Math.min(1400, Math.floor(vw * 0.8));
+    const height = Math.min(900, Math.floor(vh * 0.8));
+    return {
+      x: Math.floor((vw - width) / 2),
+      y: Math.floor((vh - height) / 2),
+      width,
+      height,
+    };
+  });
+  const [pos, setPos] = useState(initial);
+  const dragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
+
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') onClose();
@@ -203,11 +220,57 @@ function DiagramModal({ source, theme, onClose }: DiagramModalProps) {
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
+  function onHeadPointerDown(e: ReactPointerEvent<HTMLDivElement>) {
+    // Ignore clicks on the close button so it still closes the modal.
+    if ((e.target as HTMLElement).closest('button')) return;
+    e.preventDefault();
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    dragRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      origX: pos.x,
+      origY: pos.y,
+    };
+  }
+
+  function onHeadPointerMove(e: ReactPointerEvent<HTMLDivElement>) {
+    const d = dragRef.current;
+    if (!d) return;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    // Clamp so the title bar is always at least partially visible — keeps the
+    // modal recoverable if the user drags it off-screen.
+    const x = Math.max(-pos.width + 80, Math.min(vw - 80, d.origX + (e.clientX - d.startX)));
+    const y = Math.max(0, Math.min(vh - 40, d.origY + (e.clientY - d.startY)));
+    setPos((p) => ({ ...p, x, y }));
+  }
+
+  function onHeadPointerUp(e: ReactPointerEvent<HTMLDivElement>) {
+    dragRef.current = null;
+    (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
+  }
+
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-head">
+      <div
+        className="modal-content modal-floating"
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          left: pos.x,
+          top: pos.y,
+          width: pos.width,
+          height: pos.height,
+        }}
+      >
+        <div
+          className="modal-head modal-drag-handle"
+          onPointerDown={onHeadPointerDown}
+          onPointerMove={onHeadPointerMove}
+          onPointerUp={onHeadPointerUp}
+          onPointerCancel={onHeadPointerUp}
+        >
           <span className="diagram-tag">DIAGRAM</span>
+          <span className="modal-drag-hint">drag to move · grab corner to resize</span>
           <button className="link-btn" onClick={onClose} aria-label="Close">
             Close (esc)
           </button>
