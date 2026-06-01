@@ -1,4 +1,5 @@
 import { usePrefs, type Theme, type ViewMode } from '../state/preferences.js';
+import { TokenBadge } from './TokenBadge.js';
 
 export function HeaderControls() {
   const theme = usePrefs((s) => s.theme);
@@ -8,6 +9,7 @@ export function HeaderControls() {
 
   return (
     <div className="controls">
+      <TokenBadge />
       <SegmentedControl<ViewMode>
         label="View"
         value={viewMode}

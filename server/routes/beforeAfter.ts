@@ -56,7 +56,7 @@ beforeAfterRouter.get('/api/before-after/stream', (req: Request, res: Response) 
   let closed = false;
   res.on('error', () => { closed = true; });
   res.on('close', () => { closed = true; });
-  const send = (event: string, data: string): void => {
+  const send = (event: string, data: unknown): void => {
     if (closed) return;
     try {
       res.write(`event: ${event}\n`);
@@ -76,6 +76,7 @@ beforeAfterRouter.get('/api/before-after/stream', (req: Request, res: Response) 
 
   const runner = new ClaudeRunner({
     onChunk: (delta) => send('chunk', delta),
+    onUsage: (usage) => send('usage', usage),
     onDone: (full) => {
       setBeforeAfter(owner, repo, number, headSha, full.trim());
       send('done', '');

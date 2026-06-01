@@ -1,5 +1,8 @@
 import { spawn } from 'node:child_process';
 import type { PRBundle } from '../../shared/types.js';
+import type { TokenUsage } from '../../shared/usage.js';
+
+export type { TokenUsage };
 
 const MAX_DIFF_CHARS = 200_000;
 const TIMEOUT_MS = 90_000;
@@ -22,6 +25,8 @@ export interface RunnerEvents {
   onChunk: (delta: string) => void;
   onDone: (fullText: string) => void;
   onError: (msg: string) => void;
+  /** Fired once per run, just before `onDone`, when the `result` event carries usage. */
+  onUsage?: (usage: TokenUsage) => void;
 }
 
 export class ClaudeRunner {
@@ -137,6 +142,15 @@ export class ClaudeRunner {
       } else {
         this.lastText = final;
       }
+      const usage = event.usage;
+      if (usage && this.events.onUsage) {
+        this.events.onUsage({
+          input: usage.input_tokens ?? 0,
+          output: usage.output_tokens ?? 0,
+          cacheRead: usage.cache_read_input_tokens ?? 0,
+          cacheCreation: usage.cache_creation_input_tokens ?? 0,
+        });
+      }
     }
   }
 }
@@ -145,10 +159,17 @@ interface ClaudeContentBlock {
   type: string;
   text?: string;
 }
+interface ClaudeUsage {
+  input_tokens?: number;
+  output_tokens?: number;
+  cache_read_input_tokens?: number;
+  cache_creation_input_tokens?: number;
+}
 interface ClaudeEvent {
   type: string;
   message?: { content?: ClaudeContentBlock[] };
   result?: string;
+  usage?: ClaudeUsage;
 }
 
 function extractText(content: ClaudeContentBlock[]): string {

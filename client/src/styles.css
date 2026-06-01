@@ -555,6 +555,29 @@ button { font: inherit; }
 }
 .segmented .seg + .seg { border-left: 1px solid var(--border); }
 
+/* ---------- Token usage badge (header) ---------- */
+.token-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-card);
+  color: var(--fg-dim);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  cursor: default;
+  transition: border-color 0.1s, color 0.1s;
+}
+.token-badge:hover { border-color: var(--border-strong); color: var(--fg); }
+.token-badge-icon {
+  color: var(--accent);
+  font-size: 11px;
+  line-height: 1;
+}
+.token-badge-value { font-family: var(--mono); }
+
 /* ---------- Summary card (always visible) ---------- */
 .summary-card {
   background:
