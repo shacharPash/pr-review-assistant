@@ -21,6 +21,7 @@ export function TokenBadge() {
     <span className="token-badge" title={tooltip} aria-label={`Token usage: ${tooltip}`}>
       <span className="token-badge-icon" aria-hidden>◇</span>
       <span className="token-badge-value">{formatTokens(total)}</span>
+      <span className="token-badge-unit">tokens</span>
     </span>
   );
 }
