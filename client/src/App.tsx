@@ -17,11 +17,21 @@ export function App() {
   const activePath = useStore((s) => s.activeFilePath);
   const showNoise = useStore((s) => s.showNoise);
   const selectFile = useStore((s) => s.selectFile);
+  const loadPR = useStore((s) => s.loadPR);
   const theme = usePrefs((s) => s.theme);
 
   useEffect(() => {
     document.body.dataset.theme = theme;
   }, [theme]);
+
+  // Auto-load the PR named in the URL (?pr=owner/repo#123) so refresh and
+  // shared links restore the previous view instead of dropping the user
+  // back on the empty landing page.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const ref = new URLSearchParams(window.location.search).get('pr');
+    if (ref) loadPR(ref);
+  }, [loadPR]);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
