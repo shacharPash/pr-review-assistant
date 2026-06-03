@@ -1022,6 +1022,12 @@ button { font: inherit; }
   text-transform: uppercase;
   color: var(--fg-faint);
 }
+/* Review-effort pill anchored to the right edge of the diff toolbar. */
+.diff-toolbar-effort {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+}
 
 /* ---------- Review check (replaces order badge when toggled) ---------- */
 .review-check {

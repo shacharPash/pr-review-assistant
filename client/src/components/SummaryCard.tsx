@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useStore } from '../state/store.js';
 import { usePrefs } from '../state/preferences.js';
-import { ReviewEffort } from './ReviewEffort.js';
 import { RailSectionHead } from './RailSectionHead.js';
 
 interface BeforeAfter {
@@ -64,7 +63,6 @@ export function SummaryCard() {
             )}
           </div>
         </div>
-        <ReviewEffort />
       </div>
 
       {ba && (

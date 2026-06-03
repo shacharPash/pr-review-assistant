@@ -1,4 +1,5 @@
 import { usePrefs, type Theme, type ViewMode } from '../state/preferences.js';
+import { ReviewEffort } from './ReviewEffort.js';
 
 /**
  * Thin strip above the diff column hosting the controls that affect the
@@ -39,6 +40,11 @@ export function DiffToolbar() {
             { value: 'intellij', label: 'IntelliJ' },
           ]}
         />
+      </div>
+      {/* Review-effort estimate sits on the right of the code's own toolbar,
+          in line with the view/theme controls. */}
+      <div className="diff-toolbar-effort">
+        <ReviewEffort />
       </div>
     </div>
   );
