@@ -4,6 +4,7 @@ import { usePrefs } from '../state/preferences.js';
 import { DiagramPanel } from './DiagramPanel.js';
 import { ReviewActivityPane } from './ReviewActivityPane.js';
 import { JiraIcon } from './JiraIcon.js';
+import { RailSectionHead } from './RailSectionHead.js';
 import type { PersonaId } from '@shared/personas';
 import { checklistSource } from '@shared/jira';
 
@@ -55,14 +56,15 @@ export function TLDRPanel() {
 
   if (collapsed) {
     return (
-      <button className="tldr-collapsed-pill" onClick={toggleTLDR} title="Show summary">
-        <span>📌 Show summary</span>
-      </button>
+      <div className="tldr rail-section is-collapsed">
+        <RailSectionHead title="💡 Insights" collapsed onToggle={toggleTLDR} />
+      </div>
     );
   }
 
   return (
-    <div className="tldr">
+    <div className="tldr rail-section">
+      <RailSectionHead title="💡 Insights" collapsed={false} onToggle={toggleTLDR} />
       <div className="tldr-tabs" role="tablist">
         {TABS.map((t) => (
           <button
@@ -76,14 +78,6 @@ export function TLDRPanel() {
             <span>{t.label}</span>
           </button>
         ))}
-        <button
-          className="tldr-close"
-          onClick={toggleTLDR}
-          title="Hide summary (more room for files)"
-          aria-label="Hide summary"
-        >
-          ✕
-        </button>
       </div>
 
       {activeTab === 'brief' && <BriefTab tldr={tldr} retry={retry} />}
