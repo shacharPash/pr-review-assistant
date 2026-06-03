@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { detectJiraKeys } from '../jira.js';
+import { checklistSource, detectJiraKeys } from '../jira.js';
+import type { JiraInfo, JiraTicket } from '../jira.js';
 
 describe('detectJiraKeys', () => {
   it('finds a simple ticket key', () => {
@@ -62,5 +63,49 @@ describe('detectJiraKeys', () => {
     it('handles longer chains (A is prefix of B is prefix of C)', () => {
       expect(detectJiraKeys('RED-12 RED-12345 RED-1')).toEqual(['RED-12345']);
     });
+  });
+});
+
+describe('checklistSource', () => {
+  const ticket = (over: Partial<JiraTicket> = {}): JiraTicket => ({
+    key: 'RED-1',
+    title: 'Async cache eviction',
+    status: 'In Progress',
+    type: 'Story',
+    description: 'AC: eviction must not block request threads.',
+    url: 'https://x.atlassian.net/browse/RED-1',
+    ...over,
+  });
+  const info = (over: Partial<JiraInfo> = {}): JiraInfo => ({
+    configured: true,
+    tickets: [ticket()],
+    ...over,
+  });
+
+  it('picks Jira mode when fully configured and a ticket has a description', () => {
+    const res = checklistSource(info());
+    expect(res.mode).toBe('jira');
+    if (res.mode === 'jira') expect(res.ticket.key).toBe('RED-1');
+  });
+
+  it('falls back to AI when configured but no ticket has a description', () => {
+    expect(checklistSource(info({ tickets: [ticket({ description: '' })] })).mode).toBe('ai');
+  });
+
+  it('falls back to AI in link-only mode (configured=false)', () => {
+    // Link-only stubs carry empty descriptions and configured=false.
+    expect(checklistSource(info({ configured: false })).mode).toBe('ai');
+  });
+
+  it('falls back to AI when there is no Jira info at all', () => {
+    expect(checklistSource(undefined).mode).toBe('ai');
+  });
+
+  it('skips description-less tickets and grounds on the first usable one', () => {
+    const res = checklistSource(
+      info({ tickets: [ticket({ key: 'RED-1', description: '  ' }), ticket({ key: 'RED-2' })] }),
+    );
+    expect(res.mode).toBe('jira');
+    if (res.mode === 'jira') expect(res.ticket.key).toBe('RED-2');
   });
 });

@@ -15,7 +15,7 @@ export interface RunOptions {
    * full id like 'claude-sonnet-4-6'). Defaults to the user's `claude` CLI
    * default — usually whatever they're authenticated with — which can be
    * Opus and therefore slow for short outputs. Short-form routes (headline,
-   * tweet, plain-english) should override to 'sonnet' for ~3× faster
+   * plain-english, checklist) should override to 'sonnet' for ~3× faster
    * generation with no meaningful quality drop on those tasks.
    */
   model?: string;
@@ -267,8 +267,10 @@ ${diff}`;
  * Includes ONLY the ticket key, type, status, and title — not the
  * description. The description (up to several KB of corporate Jira prose)
  * was historically inlined here, but it diluted strict prompt instructions
- * (e.g. the tweet's "no preamble" rule) and Claude would echo its register
- * verbatim ("The summary is the only output requested.", "Let me write…").
+ * (e.g. the short personas' "no preamble" rules) and Claude would echo its
+ * register verbatim ("The summary is the only output requested.", "Let me write…").
+ * The checklist's Jira-AC mode is the deliberate exception: it injects the
+ * ticket description via its own system prompt (see routes/explain.ts), not here.
  * Title + status is enough linkage; the user can read the full ticket via
  * the Jira badge popover.
  */
