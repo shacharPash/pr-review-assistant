@@ -17,6 +17,28 @@ export interface JiraInfo {
   failures?: { key: string; reason: string }[];
 }
 
+/**
+ * Decide where the Checklist tab's items come from.
+ *
+ * Jira mode requires FULL auth (`configured: true`, i.e. token present so
+ * descriptions were fetched) AND a ticket that actually has a description to
+ * mine acceptance criteria from. Link-only mode (`configured: false`, stub
+ * tickets with empty descriptions) and the no-ticket case both fall back to
+ * the AI-generated checklist — there's no ticket body to ground on.
+ *
+ * Used by both the client (to render the source note) and the server (to
+ * pick the generation prompt) so the two never disagree.
+ */
+export function checklistSource(
+  jira: JiraInfo | undefined,
+): { mode: 'jira'; ticket: JiraTicket } | { mode: 'ai' } {
+  if (jira?.configured) {
+    const ticket = jira.tickets.find((t) => t.description?.trim());
+    if (ticket) return { mode: 'jira', ticket };
+  }
+  return { mode: 'ai' };
+}
+
 /** Detect Jira keys like RED-123, ABC-9 in text. Returns unique keys. */
 export function detectJiraKeys(...texts: (string | undefined)[]): string[] {
   const seen = new Set<string>();

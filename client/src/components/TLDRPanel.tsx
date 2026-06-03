@@ -3,26 +3,27 @@ import { useStore } from '../state/store.js';
 import { usePrefs } from '../state/preferences.js';
 import { DiagramPanel } from './DiagramPanel.js';
 import { ReviewActivityPane } from './ReviewActivityPane.js';
+import { JiraIcon } from './JiraIcon.js';
 import type { PersonaId } from '@shared/personas';
+import { checklistSource } from '@shared/jira';
 
 type Kind = 'core' | 'risk' | 'note';
 interface Bullet { kind: Kind; text: string; }
 
-const KIND_LABEL: Record<Kind, string> = { core: '★', risk: '!', note: '·' };
-const KIND_TITLE: Record<Kind, string> = {
-  core: 'Core change', risk: 'Watch out for', note: 'Context',
+// Per-kind presentation for the Changes & Risks card stack.
+const KIND_TAG: Record<Kind, string> = {
+  core: 'Core change', risk: '⚠ Risk', note: 'Context',
 };
 
 type TabId = 'brief' | PersonaId | 'activity';
 
-// Plain English first — it streams faster than Brief (which needs deeper
-// model reasoning to name specific files/risks) so the user gets readable
-// output sooner. Brief still pre-warms in the background.
+// Plain English first — it streams faster than Changes & Risks (which needs
+// deeper model reasoning to name specific files/risks) so the user gets
+// readable output sooner. The other tabs still pre-warm in the background.
 const TABS: { id: TabId; emoji: string; label: string }[] = [
   { id: 'explain', emoji: '💬', label: 'Plain English' },
-  { id: 'brief', emoji: '📌', label: 'Brief' },
+  { id: 'brief', emoji: '🎯', label: 'Changes & Risks' },
   { id: 'checklist', emoji: '✅', label: 'Checklist' },
-  { id: 'tweet', emoji: '🐦', label: 'Tweet' },
   { id: 'activity', emoji: '🤖', label: 'Activity' },
 ];
 
@@ -44,7 +45,6 @@ export function TLDRPanel() {
   useEffect(() => {
     if (!bundle) return;
     if (!personaResults.checklist) selectTab('checklist');
-    if (!personaResults.tweet) selectTab('tweet');
     if (!personaResults.explain) selectTab('explain');
     selectTab('explain');
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -99,12 +99,6 @@ export function TLDRPanel() {
           retry={() => retryPersona('checklist')}
         />
       )}
-      {activeTab === 'tweet' && (
-        <PersonaPaneTweet
-          result={personaResults.tweet}
-          retry={() => retryPersona('tweet')}
-        />
-      )}
       {activeTab === 'activity' && <ReviewActivityPane />}
 
       <DiagramPanel />
@@ -151,15 +145,35 @@ function BriefTab({
     );
   }
   return (
-    <div className="tldr-body">
-      {bullets.map((b, i) => (
-        <div key={i} className={`tldr-bullet ${b.kind}`} title={KIND_TITLE[b.kind]}>
-          <div className="icon">{KIND_LABEL[b.kind]}</div>
-          <div className="text" dangerouslySetInnerHTML={{ __html: renderInline(b.text) }} />
-        </div>
-      ))}
+    <div className="tldr-body cards">
+      {bullets.map((b, i) => {
+        const ref = extractRef(b.text);
+        return (
+          <div key={i} className={`insight ${b.kind}`}>
+            <div className="insight-top">
+              <span className="insight-tag">{KIND_TAG[b.kind]}</span>
+              {ref && <span className="insight-ref">{ref}</span>}
+            </div>
+            <div
+              className="insight-text"
+              dangerouslySetInnerHTML={{ __html: renderRich(b.text) }}
+            />
+          </div>
+        );
+      })}
     </div>
   );
+}
+
+/**
+ * Pull a `file.ext:line` (or `file.ext:line-line`) reference out of a bullet so
+ * it can be pinned as a chip in the card header — it's the payoff of this pane
+ * (where to look), so it shouldn't stay buried in the prose. Returns the first
+ * match; the text still renders in full below.
+ */
+function extractRef(text: string): string | null {
+  const m = text.match(/\b([\w./-]+\.[A-Za-z]{1,5}:\d+(?:-\d+)?)\b/);
+  return m ? m[1] : null;
 }
 
 function PersonaPaneExplain({
@@ -213,6 +227,8 @@ function PersonaPaneChecklist({
 }) {
   // Local-only checkmark state; not persisted because it's a thinking tool, not a record.
   const [checked, setChecked] = useState<Record<number, boolean>>({});
+  const jira = useStore((s) => s.bundle?.jira);
+  const source = checklistSource(jira);
 
   if (!result || (result.status === 'streaming' && !result.text)) {
     return (
@@ -237,6 +253,7 @@ function PersonaPaneChecklist({
 
   return (
     <div className="persona-body checklist">
+      <ChecklistSource source={source} />
       {items.map((item, i) => (
         <label key={i} className={`check-item ${checked[i] ? 'done' : ''}`}>
           <input
@@ -255,43 +272,29 @@ function PersonaPaneChecklist({
   );
 }
 
-function PersonaPaneTweet({
-  result,
-  retry,
-}: {
-  result: ReturnType<typeof useStore.getState>['personaResults']['tweet'];
-  retry: () => void;
-}) {
-  if (!result || (result.status === 'streaming' && !result.text)) {
+/**
+ * Tells the reviewer where the checklist items came from: the linked Jira
+ * ticket's acceptance criteria (when fully connected) or AI-generated from the
+ * diff. Mirrors the server's prompt choice — both call `checklistSource`.
+ */
+function ChecklistSource({ source }: { source: ReturnType<typeof checklistSource> }) {
+  if (source.mode === 'jira') {
     return (
-      <div className="tldr-skeleton" aria-label="Crafting the one-liner">
-        <div className="skel-row" style={{ width: '96%' }} />
-        <div className="skel-row" style={{ width: '64%' }} />
+      <div className="checklist-source jira">
+        <JiraIcon size={13} className="" />
+        <span>
+          Acceptance criteria from <span className="key">{source.ticket.key}</span>
+        </span>
+        <a className="open" href={source.ticket.url} target="_blank" rel="noreferrer">
+          open ticket →
+        </a>
       </div>
     );
   }
-  if (result.status === 'error') {
-    return (
-      <div className="tldr-error">
-        {result.error}
-        <button className="link-btn retry" onClick={retry}>Retry</button>
-      </div>
-    );
-  }
-  const text = result.text.trim();
-  const len = text.length;
   return (
-    <div className="persona-body tweet">
-      <div
-        className="tweet-text"
-        dangerouslySetInnerHTML={{ __html: renderInline(text) }}
-      />
-      {result.status === 'streaming' && <span className="cursor" />}
-      {result.status === 'done' && (
-        <div className={`tweet-meta ${len > 280 ? 'over' : ''}`}>
-          {len} / 280 characters
-        </div>
-      )}
+    <div className="checklist-source ai">
+      <span aria-hidden="true">✨</span>
+      <span>AI-generated from the diff — verify before approving</span>
     </div>
   );
 }
@@ -347,12 +350,6 @@ function parseChecklistItems(text: string): string[] {
   }
   push();
   return out;
-}
-
-/** Inline backticks → <code>. HTML-escaped. */
-function renderInline(text: string): string {
-  const escaped = escapeHTML(text);
-  return escaped.replace(/`([^`]+)`/g, '<code>$1</code>');
 }
 
 /** Inline backticks + **bold** + auto-link of bare http URLs. */
