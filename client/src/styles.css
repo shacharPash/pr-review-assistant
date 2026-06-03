@@ -32,6 +32,10 @@ body {
   --removed-soft: rgba(248, 81, 73, 0.15);
   --warn: #d29922;
   --warn-soft: rgba(210, 153, 34, 0.15);
+  /* Inline code identifiers in the AI panes (Plain English, Key Points,
+     Checklist, Summary). Warm amber reads calmly inside prose — saturated
+     blue chips turned every sentence into "blue confetti". */
+  --ident: #e3a857;
   --info: #58a6ff;
   --info-soft: rgba(88, 166, 255, 0.12);
   --test: #a371f7;
@@ -59,8 +63,10 @@ button { font: inherit; }
 
 .app {
   display: grid;
-  /* header · health-banner (often empty) · summary card · resizer · diff area */
-  grid-template-rows: 52px auto auto auto 1fr;
+  /* header · health-banner (often empty) · work area (left rail + diff).
+     The Summary now lives at the top of the left rail, not in a full-width
+     band, so the diff column starts at the very top. */
+  grid-template-rows: 52px auto 1fr;
   height: 100%;
   width: 100%;
   overflow: hidden;
@@ -590,35 +596,13 @@ button { font: inherit; }
     linear-gradient(135deg, var(--accent-soft) 0%, transparent 60%),
     var(--bg-elev);
   border-bottom: 1px solid var(--border);
-  padding: 12px 20px 14px;
+  padding: 12px 14px 14px;
   position: relative;
-  overflow-y: auto;
-  /* Height is set inline via usePrefs.summaryHeight; the resizer handle
-   * below the card can shrink or grow it. */
-}
-
-/* Horizontal drag handle between Summary card and PRView (mirrors the
- * other resizers visually). */
-.summary-resizer {
-  height: 6px;
-  cursor: row-resize;
-  background: var(--bg-elev);
-  border-bottom: 1px solid var(--border);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  /* Sits at the top of the left rail at its natural content height; the
+   * TL;DR panel and file list take the remaining rail height below it. */
   flex-shrink: 0;
-  transition: background 0.15s;
-  user-select: none;
-}
-.summary-resizer:hover { background: var(--bg-card); }
-.summary-resizer:hover .summary-resizer-grip { background: var(--accent); }
-.summary-resizer-grip {
-  width: 36px;
-  height: 2px;
-  border-radius: 2px;
-  background: var(--border-strong);
-  transition: background 0.15s;
+  max-height: 42%;
+  overflow-y: auto;
 }
 .summary-card::before {
   content: '';
@@ -631,14 +615,19 @@ button { font: inherit; }
 /* New grid: text+tag take main flex column, pill anchored to top-right
    corner. Body text wraps under the tag and to the LEFT of the pill —
    pill no longer pushes body text into a third row. */
+/* In the left rail the card is narrow, so the review-effort pill stacks
+   below the summary text (it sat to the right in the old full-width band)
+   and keeps its natural width rather than stretching. */
 .summary-card-grid {
   display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 14px;
+  grid-template-columns: 1fr;
+  gap: 10px;
   align-items: start;
+  justify-items: start;
 }
 .summary-main {
   min-width: 0;
+  max-width: 62ch;
 }
 .summary-head {
   display: flex;
@@ -2687,14 +2676,18 @@ button { font: inherit; }
 }
 .persona-text code,
 .explain-paragraph code,
-.check-text code {
+.check-text code,
+.insight-text code,
+.summary-body code,
+.summary-ba-text code {
   font-family: var(--mono);
   font-size: 12px;
-  background: var(--bg);
+  background: transparent;
   border: 1px solid var(--border);
-  padding: 1px 5px;
-  border-radius: 3px;
-  color: var(--accent);
+  padding: 0 5px;
+  border-radius: 5px;
+  color: var(--ident);
+  white-space: nowrap;
 }
 
 /* Plain English: emoji-led paragraphs */
@@ -2726,16 +2719,17 @@ button { font: inherit; }
 }
 .checklist-source.jira {
   background: var(--accent-soft);
-  border: 1px solid var(--accent);
-  color: var(--accent);
+  border: 1px solid rgba(47, 129, 247, 0.4);
+  color: var(--fg);
 }
 .checklist-source.jira .key {
   font-family: var(--mono);
-  font-weight: 600;
+  font-weight: 700;
+  color: var(--info);
 }
 .checklist-source.jira .open {
   margin-left: auto;
-  color: var(--accent);
+  color: var(--info);
   text-decoration: none;
   white-space: nowrap;
 }
@@ -3044,8 +3038,8 @@ button { font: inherit; }
   margin-left: auto;
   font-family: var(--mono);
   font-size: 11.5px;
-  color: var(--accent);
-  background: var(--bg);
+  color: var(--ident);
+  background: transparent;
   border: 1px solid var(--border);
   padding: 1px 7px;
   border-radius: 6px;
@@ -3059,15 +3053,6 @@ button { font: inherit; }
   word-wrap: break-word;
 }
 .insight-text strong { color: var(--fg); }
-.insight-text code {
-  font-family: var(--mono);
-  font-size: 12px;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  padding: 1px 5px;
-  border-radius: 3px;
-  color: var(--accent);
-}
 
 .tldr-streaming-raw {
   white-space: pre-wrap;

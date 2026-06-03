@@ -3,6 +3,7 @@ import { useStore, selectDisplayFiles } from '../state/store.js';
 import { usePrefs } from '../state/preferences.js';
 import { FileSidebar } from './FileSidebar.js';
 import { DiffViewer } from './DiffViewer.js';
+import { SummaryCard } from './SummaryCard.js';
 import { TLDRPanel } from './TLDRPanel.js';
 import { TLDRResizer } from './TLDRResizer.js';
 import { RailResizer } from './RailResizer.js';
@@ -56,6 +57,7 @@ export function PRView() {
   return (
     <div className="main" style={{ gridTemplateColumns: `${effectiveRail}px 6px minmax(0, 1fr)` }}>
       <aside className="left-rail">
+        <SummaryCard />
         <div
           className="tldr-slot"
           style={tldrCollapsed ? undefined : { height: tldrHeight }}

@@ -74,7 +74,7 @@ async function probeClaude(): Promise<DependencyStatus> {
         name: 'claude',
         installed: false,
         problem: 'missing',
-        hint: 'Install Claude Code: https://claude.ai/code  →  AI features (Changes & Risks, checklist, plain-English) will be disabled until then.',
+        hint: 'Install Claude Code: https://claude.ai/code  →  AI features (Key Points, checklist, plain-English) will be disabled until then.',
       };
     }
     return {
