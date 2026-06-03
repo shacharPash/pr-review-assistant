@@ -17,12 +17,12 @@ const KIND_TAG: Record<Kind, string> = {
 
 type TabId = 'brief' | PersonaId | 'activity';
 
-// Plain English first — it streams faster than Changes & Risks (which needs
-// deeper model reasoning to name specific files/risks) so the user gets
-// readable output sooner. The other tabs still pre-warm in the background.
+// Plain English first — it streams faster than Key Points (which needs deeper
+// model reasoning to name specific files/risks) so the user gets readable
+// output sooner. The other tabs still pre-warm in the background.
 const TABS: { id: TabId; emoji: string; label: string }[] = [
   { id: 'explain', emoji: '💬', label: 'Plain English' },
-  { id: 'brief', emoji: '🎯', label: 'Changes & Risks' },
+  { id: 'brief', emoji: '🎯', label: 'Key Points' },
   { id: 'checklist', emoji: '✅', label: 'Checklist' },
   { id: 'activity', emoji: '🤖', label: 'Activity' },
 ];

@@ -44,19 +44,19 @@ faster, not more surface area.
 
 Before: `💬 Plain English · 📌 Brief · ✅ Checklist · 🐦 Tweet · 🤖 Activity`
 
-After: `💬 Plain English · 🎯 Changes & Risks · ✅ Checklist · 🤖 Activity`
+After: `💬 Plain English · 🎯 Key Points · ✅ Checklist · 🤖 Activity`
 
 | Tab | Change |
 | --- | --- |
 | 💬 Plain English | Unchanged. Stays the default tab. |
-| 🎯 Changes & Risks | Renamed from "Brief"; emoji 📌 → 🎯 (resolves the SummaryCard clash); re-rendered as a color-coded card stack. |
+| 🎯 Key Points | Renamed from "Brief"; emoji 📌 → 🎯 (resolves the SummaryCard clash); re-rendered as a color-coded card stack. (First named "Changes & Risks", then "Key Points" — not every PR has a risk, so "& Risks" over-promised.) |
 | ✅ Checklist | Label kept; now Jira-aware with an in-pane source note. |
 | 🐦 Tweet | **Removed.** |
 | 🤖 Activity | Unchanged. |
 
 ## Detailed design
 
-### 1. Changes & Risks (was Brief)
+### 1. Key Points (was Brief)
 
 Same parsed content (`parseBullets` → `core | risk | note`), new presentation.
 Replace the flat `tldr-bullet` rows with a **card stack**: one card per insight,
@@ -162,7 +162,7 @@ gh PR fetch ──▶ detectJiraKeys() ──▶ fetchTickets() ──▶ bundle
 ## Error handling / fallbacks
 
 - The Diff ↔ TL;DR decoupling is preserved: any failure in checklist or
-  Changes & Risks generation shows the existing retry banner in that pane only;
+  Key Points generation shows the existing retry banner in that pane only;
   the Monaco diff still renders.
 - Jira fetch failure or missing description → silently fall back to the
   AI-generated checklist (no error surfaced; the source note simply reads
@@ -181,7 +181,43 @@ gh PR fetch ──▶ detectJiraKeys() ──▶ fetchTickets() ──▶ bundle
   and item grounding. Re-verify the existing `cli/cli#13509` / `#13510` cases
   still render (these have no Jira → AI-generated path).
 
+## Addendum — Layout & readability (v2, from live feedback)
+
+After running the tabs against real PRs, a second round of feedback drove
+layout and readability changes:
+
+1. **Rename → Key Points** (see tab table above).
+2. **Calmer code identifiers.** Inline `code` in all AI panes (Plain English,
+   Key Points, Checklist, Summary, Before/After) was a saturated-blue bordered
+   chip on every identifier — "blue confetti" that broke sentence flow. Replaced
+   with a single shared treatment: warm amber (`--ident: #e3a857`) text in a
+   hairline transparent chip. Body text was already `--fg` (#e6edf3); the
+   problem was the chips, not the prose.
+3. **Checklist Jira-note contrast.** The "from Jira" note rendered accent-blue
+   text on an accent-blue tint (unreadable). Fixed: bright `--fg` text, the
+   ticket key + "open ticket" link in `--info`.
+4. **Layout: Summary moves into the left rail.** The full-width Summary band at
+   the top was dropped. `SummaryCard` now sits at the **top of the left rail**
+   (Summary + Before/After → TL;DR tabs → file list), and the diff column starts
+   at the very top of the work area, full height. Consequences:
+   - The reading-line-length problem is solved structurally: the ~420px rail
+     caps line length far better than the old full-width band (which produced
+     150+ char lines on wide monitors). A `max-width: 62ch` guards wide rails.
+   - The Summary's review-effort pill stacks **below** the text in the narrow
+     rail (was to the right in the full-width band).
+   - `.app` grid rows drop from `52px auto auto auto 1fr` to `52px auto 1fr`.
+   - The Summary headline + Before/After now render `` `inline code` `` as amber
+     chips (previously shown as literal backticks).
+   - `SummaryResizer` component and the `summaryHeight` preference are removed —
+     the card is content-height in the rail (capped at 42% of rail height,
+     scrolls internally if needed).
+5. **Focus mode — dropped.** Originally planned (collapse AI chrome to maximize
+   the code). The new layout makes it largely redundant: the diff already owns
+   the right side at full height, and the existing rail resizer + TL;DR collapse
+   pill already let the reviewer reclaim width. Revisit only if reviewers ask
+   for a one-click collapse.
+
 ## Out of scope for this change
 
-PM view, Flow, posting back to GitHub, persistence — all unchanged from the
-project's existing v1 scope.
+PM view, Flow, Focus mode, posting back to GitHub, persistence — all unchanged
+from the project's existing v1 scope.
