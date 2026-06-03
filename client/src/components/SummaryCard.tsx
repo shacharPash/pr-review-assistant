@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useStore } from '../state/store.js';
+import { usePrefs } from '../state/preferences.js';
 import { ReviewEffort } from './ReviewEffort.js';
+import { RailSectionHead } from './RailSectionHead.js';
 
 interface BeforeAfter {
   before: string;
@@ -32,6 +34,8 @@ export function SummaryCard() {
   const bundle = useStore((s) => s.bundle);
   const headline = useStore((s) => s.headline);
   const beforeAfter = useStore((s) => s.beforeAfter);
+  const summaryCollapsed = usePrefs((s) => s.summaryCollapsed);
+  const toggleSummary = usePrefs((s) => s.toggleSummary);
   const [collapsed, setCollapsed] = useState(false);
 
   if (!bundle) return null;
@@ -39,10 +43,12 @@ export function SummaryCard() {
   const ba = beforeAfter.status === 'done' ? parseBeforeAfter(beforeAfter.text) : null;
 
   return (
-    <section className="summary-card">
+    <section className={`summary-card rail-section ${summaryCollapsed ? 'is-collapsed' : ''}`}>
+      <RailSectionHead title="📌 Summary" collapsed={summaryCollapsed} onToggle={toggleSummary} />
+      {summaryCollapsed ? null : (
+      <>
       <div className="summary-card-grid">
         <div className="summary-main">
-          <span className="summary-tag">📌 SUMMARY</span>
           <div className="summary-body">
             {headline.status === 'streaming' && (
               <>
@@ -97,6 +103,8 @@ export function SummaryCard() {
 
       {beforeAfter.status === 'streaming' && !ba && (
         <div className="summary-ba-loading">considering a before/after…</div>
+      )}
+      </>
       )}
     </section>
   );

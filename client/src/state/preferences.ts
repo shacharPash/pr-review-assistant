@@ -20,9 +20,11 @@ export type ModelPreference = 'fast' | 'smart';
 interface Preferences {
   theme: Theme;
   viewMode: ViewMode;
+  /** Each left-rail section can be collapsed to a slim header so the reviewer
+   * can focus (e.g. hide Summary + Insights to scan files + code). */
   tldrCollapsed: boolean;
-  /** Height of the TLDR panel in pixels (within the left rail). */
-  tldrHeight: number;
+  summaryCollapsed: boolean;
+  filesCollapsed: boolean;
   /** Width of the left rail in pixels. */
   railWidth: number;
   /** Suppress all reviewer/bot inline comments in the diff. */
@@ -34,7 +36,8 @@ interface Preferences {
   setTheme: (t: Theme) => void;
   setViewMode: (m: ViewMode) => void;
   toggleTLDR: () => void;
-  setTLDRHeight: (px: number) => void;
+  toggleSummary: () => void;
+  toggleFiles: () => void;
   setRailWidth: (px: number) => void;
   toggleHideReviewerComments: () => void;
   setBlameWidth: (chars: number) => void;
@@ -55,14 +58,11 @@ const RAIL_WIDTH_MIN = 280;
 const RAIL_WIDTH_MAX = 800;
 const RAIL_WIDTH_DEFAULT = 420;
 
-const TLDR_HEIGHT_KEY = 'pra.tldrHeight';
-const TLDR_HEIGHT_MIN = 100;
-const TLDR_HEIGHT_MAX = 700;
-const TLDR_HEIGHT_DEFAULT = 360;
-
 const THEME_KEY = 'pra.theme';
 const MODE_KEY = 'pra.viewMode';
 const TLDR_KEY = 'pra.tldrCollapsed';
+const SUMMARY_COLLAPSED_KEY = 'pra.summaryCollapsed';
+const FILES_COLLAPSED_KEY = 'pra.filesCollapsed';
 const HIDE_REVIEWER_KEY = 'pra.hideReviewerComments';
 const MODEL_PREF_KEY = 'pra.modelPreference';
 
@@ -78,13 +78,12 @@ export const usePrefs = create<Preferences>((set, get) => ({
   tldrCollapsed: typeof window !== 'undefined'
     ? window.localStorage.getItem(TLDR_KEY) === '1'
     : false,
-  tldrHeight: (() => {
-    if (typeof window === 'undefined') return TLDR_HEIGHT_DEFAULT;
-    const raw = window.localStorage.getItem(TLDR_HEIGHT_KEY);
-    const n = raw ? Number(raw) : NaN;
-    if (!Number.isFinite(n)) return TLDR_HEIGHT_DEFAULT;
-    return Math.max(TLDR_HEIGHT_MIN, Math.min(TLDR_HEIGHT_MAX, n));
-  })(),
+  summaryCollapsed: typeof window !== 'undefined'
+    ? window.localStorage.getItem(SUMMARY_COLLAPSED_KEY) === '1'
+    : false,
+  filesCollapsed: typeof window !== 'undefined'
+    ? window.localStorage.getItem(FILES_COLLAPSED_KEY) === '1'
+    : false,
   railWidth: (() => {
     if (typeof window === 'undefined') return RAIL_WIDTH_DEFAULT;
     const raw = window.localStorage.getItem(RAIL_WIDTH_KEY);
@@ -134,11 +133,19 @@ export const usePrefs = create<Preferences>((set, get) => ({
     }
   },
 
-  setTLDRHeight(px) {
-    const clamped = Math.max(TLDR_HEIGHT_MIN, Math.min(TLDR_HEIGHT_MAX, Math.round(px)));
-    set({ tldrHeight: clamped });
+  toggleSummary() {
+    const next = !get().summaryCollapsed;
+    set({ summaryCollapsed: next });
     if (typeof window !== 'undefined') {
-      window.localStorage.setItem(TLDR_HEIGHT_KEY, String(clamped));
+      window.localStorage.setItem(SUMMARY_COLLAPSED_KEY, next ? '1' : '0');
+    }
+  },
+
+  toggleFiles() {
+    const next = !get().filesCollapsed;
+    set({ filesCollapsed: next });
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(FILES_COLLAPSED_KEY, next ? '1' : '0');
     }
   },
 

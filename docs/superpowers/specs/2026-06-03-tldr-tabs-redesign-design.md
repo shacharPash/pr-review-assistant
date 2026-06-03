@@ -211,11 +211,31 @@ layout and readability changes:
    - `SummaryResizer` component and the `summaryHeight` preference are removed —
      the card is content-height in the rail (capped at 42% of rail height,
      scrolls internally if needed).
-5. **Focus mode — dropped.** Originally planned (collapse AI chrome to maximize
-   the code). The new layout makes it largely redundant: the diff already owns
-   the right side at full height, and the existing rail resizer + TL;DR collapse
-   pill already let the reviewer reclaim width. Revisit only if reviewers ask
-   for a one-click collapse.
+5. **Focus mode — dropped as a single toggle**, then partly reborn as
+   **per-section collapse** (see v3 below). The diff already owns the right side
+   at full height, so a single "hide all AI" button added little; instead each
+   rail section can be collapsed independently.
+
+## Addendum — Scrollable rail + collapsible sections (v3, from live feedback)
+
+Feedback after the layout landed: the left rail couldn't scroll (tall content
+was unreachable) and there was no easy way to hide parts to focus on the
+files + code.
+
+- **Single scroll rail.** The left rail is now `[.rail-scroll (flex:1,
+  overflow-y:auto)] + [ReviewFooter (pinned)]`. The three sections live inside
+  `.rail-scroll` at natural height and scroll together; the footer stays
+  reachable. The per-pane `max-height: 50vh` internal scrolls on the TL;DR were
+  removed in favor of this single rail scroll (no more nested scrollbars).
+- **Collapsible sections.** A shared `RailSectionHead` (chevron + title, with an
+  optional right slot) wraps each of **📌 Summary**, **💡 Insights** (the tabs),
+  and **🗂 Files** (count in the right slot). Each collapses to a slim header.
+  Collapse state persists per section (`summaryCollapsed`, `tldrCollapsed`,
+  `filesCollapsed` prefs) so "collapse Summary + Insights to scan files + code"
+  survives reload. This is the lightweight realization of the old Focus idea.
+- **Removed:** the `TLDRResizer` component + `tldrHeight` pref (the
+  scroll + collapse model replaces drag-to-size), the TL;DR `✕`/collapsed-pill
+  (now the section chevron), mirroring the earlier `SummaryResizer` removal.
 
 ## Out of scope for this change
 
