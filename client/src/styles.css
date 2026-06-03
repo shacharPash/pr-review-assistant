@@ -62,16 +62,18 @@ button { font: inherit; }
 /* ---------- Layout ---------- */
 
 .app {
-  display: grid;
-  /* header · health-banner (often empty) · work area (left rail + diff).
-     The Summary now lives at the top of the left rail, not in a full-width
-     band, so the diff column starts at the very top. */
-  grid-template-rows: 52px auto 1fr;
+  /* Flex column (header · optional health-banner · work area). Flex — not a
+     fixed-track grid — because the HealthBanner renders null when healthy, so
+     the child count varies; with flex, .main always eats the remaining height
+     and the diff fills the screen regardless. */
+  display: flex;
+  flex-direction: column;
   height: 100%;
   width: 100%;
   overflow: hidden;
 }
 .app > * { min-height: 0; min-width: 0; }
+.app > .main { flex: 1 1 auto; }
 
 /* ----- Health / setup banner ------------------------------------------ */
 .health-banner {
@@ -136,6 +138,8 @@ button { font: inherit; }
   align-items: center;
   gap: 16px;
   padding: 0 20px;
+  height: 52px;
+  flex-shrink: 0;
   border-bottom: 1px solid var(--border);
   background: var(--bg-elev);
 }
