@@ -293,33 +293,53 @@ function ChecklistSource({ source }: { source: ReturnType<typeof checklistSource
   );
 }
 
+// A bullet line begins when it opens with a CHANGE/RISK/CONTEXT tag (the
+// prompt's contract), with an optional leading "-"/"*"/"•" the model may still
+// add. Captures the tag and the remaining text.
+const TAGGED_LINE = /^(?:[-*•]\s*)?(CHANGE|RISK|CONTEXT)\b\s*[:.\-–]?\s*(.*)$/i;
+
+const TAG_KIND: Record<string, Kind> = { change: 'core', risk: 'risk', context: 'note' };
+
 function parseBullets(text: string): Bullet[] {
   const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
   const result: Bullet[] = [];
   let current: string | null = null;
+  let currentKind: Kind | null = null;
   const push = () => {
-    if (!current) return;
-    result.push({ kind: classify(current), text: current.trim() });
+    if (current == null) return;
+    const text = current.trim();
+    if (text) result.push({ kind: currentKind ?? classify(text), text });
     current = null;
+    currentKind = null;
   };
   for (const line of lines) {
-    if (/^[-*•]\s+/.test(line)) {
+    const tagged = line.match(TAGGED_LINE);
+    if (tagged) {
+      push();
+      currentKind = TAG_KIND[tagged[1].toLowerCase()];
+      current = tagged[2];
+    } else if (/^[-*•]\s+/.test(line)) {
+      // Legacy untagged bullet — fall back to keyword classification.
       push();
       current = line.replace(/^[-*•]\s+/, '');
-    } else if (current) {
+    } else if (current != null) {
       current += ' ' + line;
     } else {
-      current = (current ?? '') + ' ' + line;
+      current = line;
     }
   }
   push();
   return result.length > 0 ? result : [{ kind: 'note', text: text.trim() }];
 }
 
+// Fallback only — used when a bullet has no explicit CHANGE/RISK/CONTEXT tag
+// (older cached output, or a model that ignored the format). Scans the whole
+// bullet, not just the first 80 chars, so a leading file path doesn't crowd
+// out the signal word.
 function classify(text: string): Kind {
-  const lc = text.toLowerCase().slice(0, 80);
-  if (/risk\b|risky|concern|watch out|silently|race|deadlock|leak|gotcha|edge case|missing test|no test/.test(lc)) return 'risk';
-  if (/core (change|fix)|main change|fixes?|adds?\b|removes?\b|replaces?|introduces?|now (composes|computes|returns|skips|uses)|moves? from/.test(lc)) return 'core';
+  const lc = text.toLowerCase();
+  if (/\brisk\b|\brisky\b|concern|watch out|silently|race|deadlock|leak|gotcha|edge case|missing test|no test/.test(lc)) return 'risk';
+  if (/core (change|fix)|main change|\bfix(es|ed)?\b|\badds?\b|\bremoves?\b|\breplaces?\b|introduces?|now (composes|computes|returns|skips|uses)|moves? from/.test(lc)) return 'core';
   return 'note';
 }
 

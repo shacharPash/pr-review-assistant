@@ -237,6 +237,24 @@ files + code.
   scroll + collapse model replaces drag-to-size), the TL;DR `✕`/collapsed-pill
   (now the section chevron), mirroring the earlier `SummaryResizer` removal.
 
+## Addendum — Deterministic Key Points + effort pill placement (v4)
+
+- **Key Points cards are now tagged by the model, not guessed.** Previously the
+  TL;DR emitted free-text bullets and the client `classify()` guessed each
+  card's kind from a keyword regex over the **first 80 chars** — so a bullet led
+  by a long identifier (e.g. `Foo.bar(...) is a new … that replaces …`) missed
+  its signal words and fell back to "Context", even when it was the core change.
+  Now the prompt requires each bullet to start with `CHANGE:` / `RISK:` /
+  `CONTEXT:`, and `parseBullets` reads that tag (`CHANGE`→core, `RISK`→risk,
+  `CONTEXT`→note), stripping it from the displayed text. `classify()` remains
+  only as a fallback for untagged/legacy output and now scans the whole bullet.
+- **Review-effort pill moved** out of the Summary card into the **diff toolbar**
+  (right-aligned, same row as View/Theme) — it's a property of the code being
+  reviewed, so it belongs on the code's own toolbar.
+- **Full-height fix:** `.app` is a flex column (was a fixed-track grid that left
+  `.main` on an `auto` row when the HealthBanner rendered null), so the diff
+  fills the viewport and the rail footer pins to the bottom.
+
 ## Out of scope for this change
 
 PM view, Flow, Focus mode, posting back to GitHub, persistence — all unchanged

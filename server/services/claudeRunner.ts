@@ -303,25 +303,24 @@ function buildPrompt(bundle: PRBundle): string {
 NOT to review the code yourself — only to point them at what matters so they
 review faster and don't miss anything.
 
-Write 2–4 short bullets in plain text (no markdown headers, no preamble).
-Be CONCRETE. Forbidden:
+Write 2–4 short bullets, ONE per line. Start EACH line with one of these
+tags (UPPERCASE, followed by a colon) so each can be classified exactly:
 
-- Generic phrases like "improves the codebase", "various fixes", "refactors
-  for clarity". If your bullet would also fit on an unrelated PR, rewrite it.
-- Vague risk like "may introduce bugs". Name an actual line, function, or
-  edge case.
+- "CHANGE:" — the single most important behavior change: what changed and
+  where (file path AND function name or line range). Emit EXACTLY one.
+- "RISK:" — the one thing the reviewer should scrutinize most. Name an actual
+  line, function, or edge case (not "may introduce bugs"). Emit EXACTLY one.
+- "CONTEXT:" — an optional non-obvious blast-radius point, a missing test, or
+  a callsite worth checking. Emit 0–2, only if real.
 
-Required (exactly one of each, in this order):
+Order: CHANGE first, then RISK, then any CONTEXT. No markdown headers, no
+preamble, no leading "-"/"*" — just "TAG: text", one per line.
 
-1. The single most important behavior change — what changed and where (file
-   path AND function name or line range).
-2. The thing the reviewer should pay EXTRA attention to. Start the bullet
-   with the word "Risk:" or "Watch out:" or "Concern:" so it's classifiable.
-   Pick the most load-bearing risk; don't list five.
-3. (Optional) One context bullet — a non-obvious blast-radius point, a
-   missing test, or a callsite worth checking. Skip if there isn't a real one.
+Be CONCRETE. Forbidden: generic phrasing like "improves the codebase",
+"various fixes", "refactors for clarity" — if a bullet would also fit an
+unrelated PR, rewrite it.
 
-If the PR is a tiny dep bump or doc change, say so in one bullet and stop.
+If the PR is a tiny dep bump or doc change, emit a single "CHANGE:" line and stop.
 
 PR title: ${meta.title}
 Author: ${meta.author}
