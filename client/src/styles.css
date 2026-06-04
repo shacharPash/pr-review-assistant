@@ -181,6 +181,43 @@ button { font: inherit; }
   font-size: 12px;
 }
 
+/* ----- PR status + review-decision badges ----- */
+.pr-status-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+/* Status: solid GitHub-style pill so the state reads at a glance. */
+.pr-status {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding: 2px 9px;
+  border-radius: 999px;
+  color: #fff;
+  white-space: nowrap;
+}
+.pr-status-open   { background: #1f883d; }
+.pr-status-draft  { background: #6e7781; }
+.pr-status-merged { background: #8250df; }
+.pr-status-closed { background: #cf222e; }
+/* Review decision: softer tinted pill so it reads as secondary to the state. */
+.pr-review {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid;
+  white-space: nowrap;
+}
+.pr-review-approved { color: var(--added);   border-color: rgba(63, 185, 80, 0.45);  background: var(--added-soft); }
+.pr-review-changes  { color: var(--removed); border-color: rgba(248, 81, 73, 0.45);  background: var(--removed-soft); }
+.pr-review-required { color: var(--warn);    border-color: rgba(210, 153, 34, 0.45); background: var(--warn-soft); }
+
 /* Author chip — small avatar + handle, links to GH profile */
 .author-chip {
   display: inline-flex;

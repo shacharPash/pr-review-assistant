@@ -4,6 +4,7 @@ import { usePrefs } from './state/preferences.js';
 import { PRInput } from './components/PRInput.js';
 import { PRView } from './components/PRView.js';
 import { HeaderControls } from './components/HeaderControls.js';
+import { PRStatusBadge } from './components/PRStatusBadge.js';
 import { JiraBadge } from './components/JiraBadge.js';
 import { ChecksBadge } from './components/ChecksBadge.js';
 import { AuthorChip } from './components/AuthorChip.js';
@@ -64,6 +65,7 @@ export function App() {
         {bundle && (
           <div className="header-meta">
             <span className="pr-num">#{bundle.meta.number}</span>
+            <PRStatusBadge />
             <a href={bundle.meta.url} target="_blank" rel="noreferrer">
               {bundle.meta.title}
             </a>
