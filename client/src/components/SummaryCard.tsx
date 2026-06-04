@@ -1,11 +1,22 @@
 import { useState } from 'react';
 import { useStore } from '../state/store.js';
 import { usePrefs } from '../state/preferences.js';
-import { ReviewEffort } from './ReviewEffort.js';
+import { RailSectionHead } from './RailSectionHead.js';
 
 interface BeforeAfter {
   before: string;
   after: string;
+}
+
+/** Escape HTML, then render `inline code` as a chip. The summary/before-after
+ * text arrives with literal backticks from the model; without this they'd
+ * show as raw backticks. */
+function inlineCode(text: string): string {
+  const escaped = text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+  return escaped.replace(/`([^`]+)`/g, '<code>$1</code>');
 }
 
 function parseBeforeAfter(raw: string): BeforeAfter | null {
@@ -22,7 +33,8 @@ export function SummaryCard() {
   const bundle = useStore((s) => s.bundle);
   const headline = useStore((s) => s.headline);
   const beforeAfter = useStore((s) => s.beforeAfter);
-  const summaryHeight = usePrefs((s) => s.summaryHeight);
+  const summaryCollapsed = usePrefs((s) => s.summaryCollapsed);
+  const toggleSummary = usePrefs((s) => s.toggleSummary);
   const [collapsed, setCollapsed] = useState(false);
 
   if (!bundle) return null;
@@ -30,24 +42,27 @@ export function SummaryCard() {
   const ba = beforeAfter.status === 'done' ? parseBeforeAfter(beforeAfter.text) : null;
 
   return (
-    <section className="summary-card" style={{ height: summaryHeight }}>
+    <section className={`summary-card rail-section ${summaryCollapsed ? 'is-collapsed' : ''}`}>
+      <RailSectionHead title="📌 Summary" collapsed={summaryCollapsed} onToggle={toggleSummary} />
+      {summaryCollapsed ? null : (
+      <>
       <div className="summary-card-grid">
         <div className="summary-main">
-          <span className="summary-tag">📌 SUMMARY</span>
           <div className="summary-body">
             {headline.status === 'streaming' && (
               <>
-                <span>{headline.text || 'Reading the diff…'}</span>
+                <span dangerouslySetInnerHTML={{ __html: inlineCode(headline.text || 'Reading the diff…') }} />
                 <span className="cursor" />
               </>
             )}
-            {headline.status === 'done' && <span>{headline.text}</span>}
+            {headline.status === 'done' && (
+              <span dangerouslySetInnerHTML={{ __html: inlineCode(headline.text) }} />
+            )}
             {headline.status === 'error' && (
               <span className="summary-error">Couldn't generate summary.</span>
             )}
           </div>
         </div>
-        <ReviewEffort />
       </div>
 
       {ba && (
@@ -69,7 +84,7 @@ export function SummaryCard() {
                   <span className="summary-ba-icon">❌</span>
                   <span>Before</span>
                 </div>
-                <div className="summary-ba-text">{ba.before}</div>
+                <div className="summary-ba-text" dangerouslySetInnerHTML={{ __html: inlineCode(ba.before) }} />
               </div>
               <div className="summary-ba-arrow">→</div>
               <div className="summary-ba-card after">
@@ -77,7 +92,7 @@ export function SummaryCard() {
                   <span className="summary-ba-icon">✅</span>
                   <span>After</span>
                 </div>
-                <div className="summary-ba-text">{ba.after}</div>
+                <div className="summary-ba-text" dangerouslySetInnerHTML={{ __html: inlineCode(ba.after) }} />
               </div>
             </div>
           )}
@@ -86,6 +101,8 @@ export function SummaryCard() {
 
       {beforeAfter.status === 'streaming' && !ba && (
         <div className="summary-ba-loading">considering a before/after…</div>
+      )}
+      </>
       )}
     </section>
   );

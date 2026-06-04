@@ -1,7 +1,9 @@
 import { useMemo, type MouseEvent } from 'react';
 import { useStore, selectDisplayFiles } from '../state/store.js';
+import { usePrefs } from '../state/preferences.js';
 import type { DiffFile } from '@shared/types';
 import { CommitSelector } from './CommitSelector.js';
+import { RailSectionHead } from './RailSectionHead.js';
 
 export function FileSidebar() {
   const files = useStore(selectDisplayFiles);
@@ -14,6 +16,8 @@ export function FileSidebar() {
   const lineComments = useStore((s) => s.lineComments);
   const toggleReviewed = useStore((s) => s.toggleReviewed);
   const reviewComments = useStore((s) => s.reviewComments);
+  const filesCollapsed = usePrefs((s) => s.filesCollapsed);
+  const toggleFiles = usePrefs((s) => s.toggleFiles);
 
   // Map of file path → number of bot/reviewer inline comments. Used to
   // surface bot activity in the sidebar so the reviewer can see which
@@ -47,7 +51,15 @@ export function FileSidebar() {
     'files implement or verify.';
 
   return (
-    <div className="file-list">
+    <div className={`file-list rail-section ${filesCollapsed ? 'is-collapsed' : ''}`}>
+      <RailSectionHead
+        title="🗂 Files"
+        collapsed={filesCollapsed}
+        onToggle={toggleFiles}
+        right={<span className="count">{reviewedCount}/{total} reviewed</span>}
+      />
+      {filesCollapsed ? null : (
+      <>
       <CommitSelector />
       <div className="section-label">
         <span className="label-with-info">
@@ -56,9 +68,6 @@ export function FileSidebar() {
             <span className="info-icon">i</span>
             <span className="info-pop">{orderExplain}</span>
           </span>
-        </span>
-        <span className="count">
-          {reviewedCount}/{total} reviewed
         </span>
       </div>
       <div className="review-progress">
@@ -138,6 +147,8 @@ export function FileSidebar() {
         <div className="noise-toggle" onClick={toggleNoise}>
           Hide noise files
         </div>
+      )}
+      </>
       )}
     </div>
   );
