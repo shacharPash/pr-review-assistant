@@ -969,11 +969,18 @@ export function fileContentFor(
 
   hunks.forEach((h, idx) => {
     if (idx > 0) {
-      // Blank separator row in both sides.
-      oldParts.push('');
-      newParts.push('');
-      oldMap.push(0);
-      newMap.push(0);
+      // Only insert a ⋯ separator when lines are actually hidden between this
+      // hunk and the previous one. Adjacent hunks (no gap on either side) render
+      // continuously — no fake ⋯ and no expand control where nothing's hidden.
+      const prevH = hunks[idx - 1];
+      const gapNew = h.newStart - (prevH.newStart + prevH.newLines - 1) - 1;
+      const gapOld = h.oldStart - (prevH.oldStart + prevH.oldLines - 1) - 1;
+      if (gapNew > 0 || gapOld > 0) {
+        oldParts.push('');
+        newParts.push('');
+        oldMap.push(0);
+        newMap.push(0);
+      }
     }
 
     const e = exp[idx] ?? { above: 0, below: 0 };
