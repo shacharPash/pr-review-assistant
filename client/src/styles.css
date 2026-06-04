@@ -1603,6 +1603,26 @@ button { font: inherit; }
 .primary-btn:hover:not(:disabled) { filter: brightness(1.1); }
 .primary-btn:disabled { opacity: 0.5; cursor: default; }
 
+/* Terminal-state footer (merged / closed): a calm status note that replaces
+   the "Ready to approve" CTA, since you can't review a finished PR. */
+.review-footer.terminal-state {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--fg-dim);
+  border-top: 1px solid var(--border);
+  border-left: 3px solid var(--border-strong);
+  background: var(--bg-elev);
+  padding: 12px 14px;
+  flex-shrink: 0;
+}
+.review-footer.terminal-state.merged { border-left-color: #8250df; }
+.review-footer.terminal-state.closed { border-left-color: var(--removed); }
+.review-footer.terminal-state .terminal-state-label { color: var(--fg); }
+.review-footer.terminal-state .link-btn { white-space: nowrap; }
+
 /* ---------- Review footer ---------- */
 .review-footer {
   border-top: 1px solid var(--border);
