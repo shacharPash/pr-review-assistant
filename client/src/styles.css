@@ -3388,6 +3388,11 @@ button { font: inherit; }
   height: 100%;
   padding-left: 8px;
   background: var(--bg-elev);
+  /* Monaco paints the view-lines layer above view-zones, so without this the
+     lines layer swallows clicks meant for the chip. Lift the row into a higher
+     stacking level so the button is actually clickable. */
+  position: relative;
+  z-index: 10;
 }
 .expand-context-btn {
   display: inline-flex;
