@@ -28,6 +28,23 @@ export function ReviewFooter() {
 
   if (!bundle) return null;
 
+  // A merged or closed PR can't be approved / have changes requested, so the
+  // "Ready to approve" CTA is wrong there. Show a calm status note instead —
+  // the reviewer is reading it after the fact, not reviewing it.
+  if (bundle.meta.state === 'merged' || bundle.meta.state === 'closed') {
+    const merged = bundle.meta.state === 'merged';
+    return (
+      <div className={`review-footer terminal-state ${merged ? 'merged' : 'closed'}`}>
+        <span className="terminal-state-label">
+          {merged ? '🟣 This PR is merged' : '🔴 This PR is closed'} — review actions don’t apply.
+        </span>
+        <a href={bundle.meta.url} target="_blank" rel="noreferrer" className="link-btn">
+          View on GitHub →
+        </a>
+      </div>
+    );
+  }
+
   // Flatten all pending comments so we can both count them accurately AND
   // show the user exactly where each one lives — fixes the "1 comment but
   // I can't find it" puzzle when an entry survives from a previous PR.
