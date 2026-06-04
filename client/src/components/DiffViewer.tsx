@@ -222,7 +222,13 @@ export function DiffViewer({ file, position }: Props) {
       if (hasFull || !fullReady || !file) return;
 
       const ids: string[] = [];
-      hunkBoundaries.forEach((b) => {
+      hunkBoundaries.forEach((b, i) => {
+        // One chip per gap. Each hunk's "↑ above" covers the gap before it (the
+        // file head for the first hunk, the inter-hunk gap otherwise). The gap
+        // *below* a hunk is the same gap as the next hunk's "above", so only the
+        // LAST hunk needs a "↓ below" — for the file tail. This avoids the two
+        // stacked chips that used to bracket every inter-hunk gap.
+        const isLast = i === hunkBoundaries.length - 1;
         if (b.canExpandAbove > 0) {
           ids.push(accessor.addZone({
             afterLineNumber: b.monacoStartLine - 1, // reserved row just above the hunk
@@ -230,9 +236,9 @@ export function DiffViewer({ file, position }: Props) {
             domNode: makeChip('above', b.canExpandAbove, b.hunkIdx),
           }));
         }
-        if (b.canExpandBelow > 0) {
+        if (b.canExpandBelow > 0 && isLast) {
           ids.push(accessor.addZone({
-            afterLineNumber: b.monacoEndLine, // reserved row just below the hunk
+            afterLineNumber: b.monacoEndLine, // reserved row just below the last hunk
             heightInLines: 1,
             domNode: makeChip('below', b.canExpandBelow, b.hunkIdx),
           }));
