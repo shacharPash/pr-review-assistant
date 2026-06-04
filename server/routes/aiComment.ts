@@ -1,5 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import { spawn } from 'node:child_process';
+import { normalizeClaudeUsage } from '../services/claudeRunner.js';
+import type { TokenUsage } from '../../shared/usage.js';
 
 export const aiCommentRouter = Router();
 
@@ -29,8 +31,8 @@ aiCommentRouter.post('/api/ai-comment', async (req: Request, res: Response) => {
     : buildEnhancePrompt(filePath, startLine, endLine, originalCode ?? '', draft ?? '');
 
   try {
-    const text = await runClaude(prompt);
-    res.json({ text });
+    const { text, usage } = await runClaude(prompt);
+    res.json({ text, usage });
   } catch (err) {
     const e = err as NodeJS.ErrnoException & { stderr?: string };
     if (e.code === 'ENOENT') {
@@ -94,11 +96,27 @@ Rewrite the comment so it's:
 Output ONLY the rewritten comment. No quotes, no preamble, no commentary.`;
 }
 
-function runClaude(prompt: string): Promise<string> {
+interface ClaudeResult {
+  text: string;
+  usage: TokenUsage | null;
+}
+
+function runClaude(prompt: string): Promise<ClaudeResult> {
   return new Promise((resolve, reject) => {
-    const proc = spawn('claude', ['-p'], { stdio: ['pipe', 'pipe', 'pipe'] });
-    let stdout = '';
+    // stream-json + --verbose mirrors how the streaming routes call claude,
+    // so we get the same `result` event with usage info instead of plain
+    // text. --model sonnet because these helpers are short-output (a code
+    // suggestion or a 1-3 sentence rewrite) — Opus adds no quality here.
+    const proc = spawn(
+      'claude',
+      ['-p', '--output-format', 'stream-json', '--verbose', '--model', 'sonnet'],
+      { stdio: ['pipe', 'pipe', 'pipe'] },
+    );
+    let buffer = '';
     let stderr = '';
+    let finalText = '';
+    let usage: TokenUsage | null = null;
+
     const timer = setTimeout(() => {
       proc.kill('SIGTERM');
       reject(new Error(`AI call timed out after ${TIMEOUT_MS / 1000}s`));
@@ -106,7 +124,27 @@ function runClaude(prompt: string): Promise<string> {
 
     proc.stdout.setEncoding('utf8');
     proc.stderr.setEncoding('utf8');
-    proc.stdout.on('data', (c: string) => { stdout += c; });
+    proc.stdout.on('data', (chunk: string) => {
+      buffer += chunk;
+      const lines = buffer.split('\n');
+      buffer = lines.pop() ?? '';
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try {
+          const event = JSON.parse(line) as {
+            type: string;
+            result?: string;
+            usage?: Parameters<typeof normalizeClaudeUsage>[0];
+          };
+          if (event.type === 'result' && typeof event.result === 'string') {
+            finalText = event.result;
+            usage = normalizeClaudeUsage(event.usage);
+          }
+        } catch {
+          // Non-JSON line — ignore.
+        }
+      }
+    });
     proc.stderr.on('data', (c: string) => { stderr += c; });
     proc.on('error', (err) => {
       clearTimeout(timer);
@@ -114,7 +152,7 @@ function runClaude(prompt: string): Promise<string> {
     });
     proc.on('close', (code) => {
       clearTimeout(timer);
-      if (code === 0) resolve(stdout.trim());
+      if (code === 0) resolve({ text: finalText.trim(), usage });
       else {
         const e = new Error(`claude exited ${code}`) as Error & { code?: number; stderr?: string };
         e.code = code ?? -1;

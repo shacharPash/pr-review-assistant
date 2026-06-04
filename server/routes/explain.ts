@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from 'express';
-import { ClaudeRunner } from '../services/claudeRunner.js';
+import { ClaudeRunner, pickModel } from '../services/claudeRunner.js';
 import { getBundle, getExplanation, setExplanation } from '../services/cache.js';
 import { findPersona } from '../../shared/personas.js';
 
@@ -37,7 +37,7 @@ explainRouter.get('/api/explain/stream', (req: Request, res: Response) => {
   let closed = false;
   res.on('error', () => { closed = true; });
   res.on('close', () => { closed = true; });
-  const send = (event: string, data: string): void => {
+  const send = (event: string, data: unknown): void => {
     if (closed) return;
     try {
       res.write(`event: ${event}\n`);
@@ -57,6 +57,7 @@ explainRouter.get('/api/explain/stream', (req: Request, res: Response) => {
 
   const runner = new ClaudeRunner({
     onChunk: (delta) => send('chunk', delta),
+    onUsage: (usage) => send('usage', usage),
     onDone: (full) => {
       setExplanation(owner, repo, number, headSha, personaId, full);
       send('done', '');
@@ -69,8 +70,7 @@ explainRouter.get('/api/explain/stream', (req: Request, res: Response) => {
   });
 
   req.on('close', () => runner.abort());
-  // Short-form personas (tweet, plain-english, checklist) don't need deep
-  // code reasoning — Sonnet is plenty and 2-3× faster than the user's
-  // default (often Opus). Keeps the TLDR panel feeling responsive.
-  runner.start(bundle, { systemPrompt: persona.prompt, model: 'sonnet' });
+  // Light route: the personas (plain-english, tweet, checklist) are all
+  // short reformulations of the diff. Opus adds no quality here.
+  runner.start(bundle, { systemPrompt: persona.prompt, model: pickModel(req.query.mode, 'light') });
 });

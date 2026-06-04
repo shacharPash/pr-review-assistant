@@ -1,5 +1,8 @@
 import { spawn } from 'node:child_process';
 import type { PRBundle } from '../../shared/types.js';
+import type { TokenUsage } from '../../shared/usage.js';
+
+export type { TokenUsage };
 
 const MAX_DIFF_CHARS = 200_000;
 const TIMEOUT_MS = 90_000;
@@ -18,10 +21,34 @@ export interface RunOptions {
   model?: string;
 }
 
+/**
+ * Routes self-declare which tier they belong to so the model picker can be
+ * defined in one place. Heavy = routes where stronger reasoning genuinely
+ * moves quality (TL;DR, diagram). Light = short outputs where Opus would
+ * just burn tokens (headline, before-after, complexity, persona tabs).
+ */
+export type RouteTier = 'heavy' | 'light';
+export type AIMode = 'fast' | 'smart';
+
+/**
+ * Resolve `?mode=fast|smart` to an actual Claude model based on the route's
+ * tier. Smart upgrades heavy routes to Opus and leaves light routes on
+ * Sonnet — never Opus for short outputs, regardless of mode. Unknown or
+ * missing values fall back to 'smart' so the demo still works if the URL
+ * is hand-crafted.
+ */
+export function pickModel(rawMode: unknown, tier: RouteTier): RunOptions['model'] {
+  const mode: AIMode = rawMode === 'fast' ? 'fast' : 'smart';
+  if (tier === 'light') return 'sonnet';
+  return mode === 'smart' ? 'opus' : 'sonnet';
+}
+
 export interface RunnerEvents {
   onChunk: (delta: string) => void;
   onDone: (fullText: string) => void;
   onError: (msg: string) => void;
+  /** Fired once per run, just before `onDone`, when the `result` event carries usage. */
+  onUsage?: (usage: TokenUsage) => void;
 }
 
 export class ClaudeRunner {
@@ -137,6 +164,10 @@ export class ClaudeRunner {
       } else {
         this.lastText = final;
       }
+      const usage = normalizeClaudeUsage(event.usage);
+      if (usage && this.events.onUsage) {
+        this.events.onUsage(usage);
+      }
     }
   }
 }
@@ -145,10 +176,32 @@ interface ClaudeContentBlock {
   type: string;
   text?: string;
 }
+interface ClaudeUsage {
+  input_tokens?: number;
+  output_tokens?: number;
+  cache_read_input_tokens?: number;
+  cache_creation_input_tokens?: number;
+}
+
+/**
+ * Normalize Claude's snake_case usage block into the camelCase shape the
+ * client store consumes. Exported so non-streaming callers (aiComment)
+ * can share the same parsing and avoid drift.
+ */
+export function normalizeClaudeUsage(raw: ClaudeUsage | undefined): TokenUsage | null {
+  if (!raw) return null;
+  return {
+    input: raw.input_tokens ?? 0,
+    output: raw.output_tokens ?? 0,
+    cacheRead: raw.cache_read_input_tokens ?? 0,
+    cacheCreation: raw.cache_creation_input_tokens ?? 0,
+  };
+}
 interface ClaudeEvent {
   type: string;
   message?: { content?: ClaudeContentBlock[] };
   result?: string;
+  usage?: ClaudeUsage;
 }
 
 function extractText(content: ClaudeContentBlock[]): string {

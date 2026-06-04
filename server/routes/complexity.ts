@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from 'express';
-import { ClaudeRunner } from '../services/claudeRunner.js';
+import { ClaudeRunner, pickModel } from '../services/claudeRunner.js';
 import { getBundle, getComplexity, setComplexity } from '../services/cache.js';
 
 export const complexityRouter = Router();
@@ -53,7 +53,7 @@ complexityRouter.get('/api/complexity/stream', (req: Request, res: Response) => 
   let closed = false;
   res.on('error', () => { closed = true; });
   res.on('close', () => { closed = true; });
-  const send = (event: string, data: string): void => {
+  const send = (event: string, data: unknown): void => {
     if (closed) return;
     try {
       res.write(`event: ${event}\n`);
@@ -73,6 +73,7 @@ complexityRouter.get('/api/complexity/stream', (req: Request, res: Response) => 
 
   const runner = new ClaudeRunner({
     onChunk: (delta) => send('chunk', delta),
+    onUsage: (usage) => send('usage', usage),
     onDone: (full) => {
       // Normalize: model may add stray punctuation/casing.
       const normalized = full.trim().toLowerCase().replace(/[^a-z]/g, '');
@@ -90,5 +91,6 @@ complexityRouter.get('/api/complexity/stream', (req: Request, res: Response) => 
   });
 
   req.on('close', () => runner.abort());
-  runner.start(bundle, { systemPrompt: COMPLEXITY_PROMPT });
+  // Light route: one-word classification.
+  runner.start(bundle, { systemPrompt: COMPLEXITY_PROMPT, model: pickModel(req.query.mode, 'light') });
 });
