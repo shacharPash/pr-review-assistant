@@ -2660,7 +2660,9 @@ button { font: inherit; }
   padding: 0 5px;
   border-radius: 5px;
   color: var(--ident);
-  white-space: nowrap;
+  /* Long identifiers/paths (e.g. GET /v1/products/{id}/plans) must break to
+     stay inside narrow rail cards rather than overflow the edge. */
+  overflow-wrap: anywhere;
 }
 
 /* Plain English: emoji-led paragraphs */
