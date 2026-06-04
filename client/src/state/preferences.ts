@@ -2,6 +2,20 @@ import { create } from 'zustand';
 
 export type Theme = 'github' | 'intellij' | 'vscode';
 export type ViewMode = 'split' | 'unified';
+/**
+ * Reviewer's quality/speed tier for AI features. The server maps this to
+ * a per-route model so we don't waste Opus on one-word outputs.
+ *
+ * - `fast`  — Sonnet everywhere. Cheap, snappy, fine for routine PRs.
+ * - `smart` — Opus on the routes where reasoning matters (TL;DR + diagram);
+ *             Sonnet on short outputs (headline / before-after / complexity /
+ *             persona tabs) because Opus adds no quality there.
+ *
+ * This deliberately replaces the older 'auto' option, whose meaning silently
+ * depended on each user's `claude` CLI config and produced inconsistent token
+ * bills across teammates.
+ */
+export type ModelPreference = 'fast' | 'smart';
 
 interface Preferences {
   theme: Theme;
@@ -17,6 +31,8 @@ interface Preferences {
   hideReviewerComments: boolean;
   /** Blame gutter width in CHARACTERS (only used when blame is visible). */
   blameWidth: number;
+  /** Which Claude model to use for AI features. */
+  modelPreference: ModelPreference;
   setTheme: (t: Theme) => void;
   setViewMode: (m: ViewMode) => void;
   toggleTLDR: () => void;
@@ -25,6 +41,7 @@ interface Preferences {
   setSummaryHeight: (px: number) => void;
   toggleHideReviewerComments: () => void;
   setBlameWidth: (chars: number) => void;
+  setModelPreference: (m: ModelPreference) => void;
 }
 
 const BLAME_WIDTH_KEY = 'pra.blameWidth';
@@ -55,6 +72,7 @@ const THEME_KEY = 'pra.theme';
 const MODE_KEY = 'pra.viewMode';
 const TLDR_KEY = 'pra.tldrCollapsed';
 const HIDE_REVIEWER_KEY = 'pra.hideReviewerComments';
+const MODEL_PREF_KEY = 'pra.modelPreference';
 
 function readLS<T extends string>(key: string, fallback: T, allowed: readonly T[]): T {
   if (typeof window === 'undefined') return fallback;
@@ -85,6 +103,17 @@ export const usePrefs = create<Preferences>((set, get) => ({
   hideReviewerComments: typeof window !== 'undefined'
     ? window.localStorage.getItem(HIDE_REVIEWER_KEY) === '1'
     : false,
+  modelPreference: (() => {
+    if (typeof window === 'undefined') return 'smart' as ModelPreference;
+    const raw = window.localStorage.getItem(MODEL_PREF_KEY);
+    // Migrate the prior 3-pill values:
+    //   auto / opus  → smart  (closest to what they were getting)
+    //   sonnet       → fast
+    // Anything else (or nothing) defaults to 'smart' so new users see the
+    // tool's strongest reasoning on TL;DR + diagram out of the box.
+    if (raw === 'fast' || raw === 'sonnet') return 'fast';
+    return 'smart';
+  })(),
   blameWidth: (() => {
     if (typeof window === 'undefined') return BLAME_WIDTH_DEFAULT;
     const raw = window.localStorage.getItem(BLAME_WIDTH_KEY);
@@ -159,6 +188,11 @@ export const usePrefs = create<Preferences>((set, get) => ({
     if (typeof window !== 'undefined') {
       window.localStorage.setItem(BLAME_WIDTH_KEY, String(clamped));
     }
+  },
+
+  setModelPreference(m) {
+    set({ modelPreference: m });
+    if (typeof window !== 'undefined') window.localStorage.setItem(MODEL_PREF_KEY, m);
   },
 }));
 

@@ -8,6 +8,7 @@ import { TLDRResizer } from './TLDRResizer.js';
 import { RailResizer } from './RailResizer.js';
 import { ReviewFooter } from './ReviewFooter.js';
 import { LandingHero } from './LandingHero.js';
+import { DiffToolbar } from './DiffToolbar.js';
 
 export function PRView() {
   const bundle = useStore((s) => s.bundle);
@@ -67,6 +68,7 @@ export function PRView() {
       </aside>
       <RailResizer />
       <div className="diff-column">
+        <DiffToolbar />
         <DiffViewer file={activeFile} position={position} />
       </div>
     </div>

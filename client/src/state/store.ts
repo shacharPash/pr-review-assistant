@@ -3,6 +3,8 @@ import type { PRBundle, DiffFile, TLDR, BlameRange } from '@shared/types';
 import type { PersonaId } from '@shared/personas';
 import type { PRComments } from '@shared/reviewComments';
 import type { CheckRun } from '@shared/checks';
+import { EMPTY_USAGE, addUsage, type TokenUsage } from '@shared/usage';
+import { usePrefs } from './preferences.js';
 
 export interface FullFileContent {
   status: 'loading' | 'ready' | 'error';
@@ -80,6 +82,10 @@ interface State {
     error?: string;
   };
   fetchChecks: () => Promise<void>;
+  /** Running total of Claude tokens used for the current PR session. Resets on loadPR. */
+  tokenUsage: TokenUsage;
+  /** Add a usage delta — for one-shot endpoints that can't use the SSE listener. */
+  recordUsage: (u: TokenUsage) => void;
   /** Status of the external CLIs (gh, claude); used by the setup banner. */
   health: {
     status: 'idle' | 'loading' | 'ready';
@@ -158,7 +164,32 @@ function writeJSON(key: string, value: unknown): void {
   }
 }
 
-function openComplexityStream(bundle: PRBundle, set: (partial: Partial<State>) => void) {
+type StoreSetter = (
+  partial: Partial<State> | ((state: State) => Partial<State>),
+) => void;
+
+/**
+ * Returns the `&mode=fast|smart` suffix to append to a stream URL. The server
+ * maps the mode to a per-route model (Opus on heavy routes when smart;
+ * Sonnet on light routes regardless). Captured at stream-open time so a
+ * mid-flight stream keeps its mode even if the picker changes.
+ */
+function modeParam(): string {
+  return `&mode=${usePrefs.getState().modelPreference}`;
+}
+
+function attachUsageListener(es: EventSource, set: StoreSetter): void {
+  es.addEventListener('usage', (e: MessageEvent) => {
+    try {
+      const u = JSON.parse(e.data) as TokenUsage;
+      set((s) => ({ tokenUsage: addUsage(s.tokenUsage, u) }));
+    } catch {
+      // malformed usage payload — ignore; the run still completes
+    }
+  });
+}
+
+function openComplexityStream(bundle: PRBundle, set: StoreSetter) {
   if (complexityEventSource) {
     complexityEventSource.close();
     complexityEventSource = null;
@@ -166,10 +197,12 @@ function openComplexityStream(bundle: PRBundle, set: (partial: Partial<State>) =
   const url = `/api/complexity/stream?owner=${encodeURIComponent(bundle.meta.owner)}` +
     `&repo=${encodeURIComponent(bundle.meta.repo)}` +
     `&number=${bundle.meta.number}` +
-    `&headSha=${bundle.meta.headSha}`;
+    `&headSha=${bundle.meta.headSha}` +
+    modeParam();
   const es = new EventSource(url);
   complexityEventSource = es;
   set({ complexity: { text: '', status: 'streaming' } });
+  attachUsageListener(es, set);
   let acc = '';
   const decode = (raw: string): string => {
     try { return JSON.parse(raw) as string; } catch { return raw; }
@@ -191,7 +224,7 @@ function openComplexityStream(bundle: PRBundle, set: (partial: Partial<State>) =
   });
 }
 
-function openBeforeAfterStream(bundle: PRBundle, set: (partial: Partial<State>) => void) {
+function openBeforeAfterStream(bundle: PRBundle, set: StoreSetter) {
   if (beforeAfterEventSource) {
     beforeAfterEventSource.close();
     beforeAfterEventSource = null;
@@ -199,10 +232,12 @@ function openBeforeAfterStream(bundle: PRBundle, set: (partial: Partial<State>) 
   const url = `/api/before-after/stream?owner=${encodeURIComponent(bundle.meta.owner)}` +
     `&repo=${encodeURIComponent(bundle.meta.repo)}` +
     `&number=${bundle.meta.number}` +
-    `&headSha=${bundle.meta.headSha}`;
+    `&headSha=${bundle.meta.headSha}` +
+    modeParam();
   const es = new EventSource(url);
   beforeAfterEventSource = es;
   set({ beforeAfter: { text: '', status: 'streaming' } });
+  attachUsageListener(es, set);
   let acc = '';
   const decode = (raw: string): string => {
     try { return JSON.parse(raw) as string; } catch { return raw; }
@@ -224,7 +259,7 @@ function openBeforeAfterStream(bundle: PRBundle, set: (partial: Partial<State>) 
   });
 }
 
-function openDiagramStream(bundle: PRBundle, set: (partial: Partial<State>) => void) {
+function openDiagramStream(bundle: PRBundle, set: StoreSetter) {
   if (diagramEventSource) {
     diagramEventSource.close();
     diagramEventSource = null;
@@ -232,10 +267,12 @@ function openDiagramStream(bundle: PRBundle, set: (partial: Partial<State>) => v
   const url = `/api/diagram/stream?owner=${encodeURIComponent(bundle.meta.owner)}` +
     `&repo=${encodeURIComponent(bundle.meta.repo)}` +
     `&number=${bundle.meta.number}` +
-    `&headSha=${bundle.meta.headSha}`;
+    `&headSha=${bundle.meta.headSha}` +
+    modeParam();
   const es = new EventSource(url);
   diagramEventSource = es;
   set({ diagram: { text: '', status: 'streaming' } });
+  attachUsageListener(es, set);
   let acc = '';
   const decode = (raw: string): string => {
     try { return JSON.parse(raw) as string; } catch { return raw; }
@@ -257,7 +294,7 @@ function openDiagramStream(bundle: PRBundle, set: (partial: Partial<State>) => v
   });
 }
 
-function openHeadlineStream(bundle: PRBundle, set: (partial: Partial<State>) => void) {
+function openHeadlineStream(bundle: PRBundle, set: StoreSetter) {
   if (headlineEventSource) {
     headlineEventSource.close();
     headlineEventSource = null;
@@ -265,10 +302,12 @@ function openHeadlineStream(bundle: PRBundle, set: (partial: Partial<State>) => 
   const url = `/api/headline/stream?owner=${encodeURIComponent(bundle.meta.owner)}` +
     `&repo=${encodeURIComponent(bundle.meta.repo)}` +
     `&number=${bundle.meta.number}` +
-    `&headSha=${bundle.meta.headSha}`;
+    `&headSha=${bundle.meta.headSha}` +
+    modeParam();
   const es = new EventSource(url);
   headlineEventSource = es;
   set({ headline: { text: '', status: 'streaming' } });
+  attachUsageListener(es, set);
   let acc = '';
 
   const decode = (raw: string): string => {
@@ -292,7 +331,7 @@ function openHeadlineStream(bundle: PRBundle, set: (partial: Partial<State>) => 
   });
 }
 
-function openTLDRStream(bundle: PRBundle, set: (partial: Partial<State>) => void) {
+function openTLDRStream(bundle: PRBundle, set: StoreSetter) {
   if (tldrEventSource) {
     tldrEventSource.close();
     tldrEventSource = null;
@@ -300,10 +339,12 @@ function openTLDRStream(bundle: PRBundle, set: (partial: Partial<State>) => void
   const url = `/api/tldr/stream?owner=${encodeURIComponent(bundle.meta.owner)}` +
     `&repo=${encodeURIComponent(bundle.meta.repo)}` +
     `&number=${bundle.meta.number}` +
-    `&headSha=${bundle.meta.headSha}`;
+    `&headSha=${bundle.meta.headSha}` +
+    modeParam();
   const es = new EventSource(url);
   tldrEventSource = es;
   set({ tldr: { text: '', status: 'streaming' } });
+  attachUsageListener(es, set);
   let acc = '';
 
   const decode = (raw: string): string => {
@@ -365,6 +406,7 @@ export const useStore = create<State>((set, get) => ({
   hunkExpansions: {},
   health: { status: 'idle', ok: true, dependencies: [] },
   checks: { status: 'idle', runs: [] },
+  tokenUsage: EMPTY_USAGE,
 
   async loadPR(ref) {
     set({
@@ -391,6 +433,7 @@ export const useStore = create<State>((set, get) => ({
       reviewCommentsError: undefined,
       hunkExpansions: {},
       checks: { status: 'idle', runs: [] },
+      tokenUsage: EMPTY_USAGE,
     });
     try {
       const res = await fetch(`/api/pr?ref=${encodeURIComponent(ref)}`);
@@ -556,6 +599,10 @@ export const useStore = create<State>((set, get) => ({
         reviewCommentsError: (err as Error).message,
       });
     }
+  },
+
+  recordUsage(u) {
+    set((s) => ({ tokenUsage: addUsage(s.tokenUsage, u) }));
   },
 
   async fetchChecks() {
@@ -817,7 +864,7 @@ export const useStore = create<State>((set, get) => ({
 function openPersonaStream(
   bundle: PRBundle,
   id: PersonaId,
-  set: (partial: Partial<State>) => void,
+  set: StoreSetter,
   get: () => State,
 ) {
   const existing = personaEventSources.get(id);
@@ -830,10 +877,12 @@ function openPersonaStream(
     `&repo=${encodeURIComponent(bundle.meta.repo)}` +
     `&number=${bundle.meta.number}` +
     `&headSha=${bundle.meta.headSha}` +
-    `&persona=${encodeURIComponent(id)}`;
+    `&persona=${encodeURIComponent(id)}` +
+    modeParam();
   const es = new EventSource(url);
   personaEventSources.set(id, es);
   set({ personaResults: { ...get().personaResults, [id]: { text: '', status: 'streaming' } } });
+  attachUsageListener(es, set);
   let acc = '';
 
   const decode = (raw: string): string => {

@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from 'express';
-import { ClaudeRunner } from '../services/claudeRunner.js';
+import { ClaudeRunner, pickModel } from '../services/claudeRunner.js';
 import { getBundle, getTLDR, setTLDR } from '../services/cache.js';
 
 export const tldrRouter = Router();
@@ -30,7 +30,7 @@ tldrRouter.get('/api/tldr/stream', (req: Request, res: Response) => {
   let closed = false;
   res.on('error', () => { closed = true; });
   res.on('close', () => { closed = true; });
-  const send = (event: string, data: string): void => {
+  const send = (event: string, data: unknown): void => {
     if (closed) return;
     try {
       res.write(`event: ${event}\n`);
@@ -51,6 +51,7 @@ tldrRouter.get('/api/tldr/stream', (req: Request, res: Response) => {
 
   const runner = new ClaudeRunner({
     onChunk: (delta) => send('chunk', delta),
+    onUsage: (usage) => send('usage', usage),
     onDone: (full) => {
       setTLDR(owner, repo, number, headSha, full);
       send('done', '');
@@ -66,5 +67,6 @@ tldrRouter.get('/api/tldr/stream', (req: Request, res: Response) => {
     runner.abort();
   });
 
-  runner.start(bundle);
+  // TL;DR is a heavy route: Opus when Smart, Sonnet when Fast.
+  runner.start(bundle, { model: pickModel(req.query.mode, 'heavy') });
 });

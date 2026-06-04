@@ -555,6 +555,35 @@ button { font: inherit; }
 }
 .segmented .seg + .seg { border-left: 1px solid var(--border); }
 
+/* ---------- Token usage badge (header) ---------- */
+.token-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-card);
+  color: var(--fg-dim);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  cursor: default;
+  transition: border-color 0.1s, color 0.1s;
+}
+.token-badge:hover { border-color: var(--border-strong); color: var(--fg); }
+.token-badge-icon {
+  color: var(--accent);
+  font-size: 11px;
+  line-height: 1;
+}
+.token-badge-value { font-family: var(--mono); font-weight: 600; }
+.token-badge-unit {
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  color: var(--fg-faint);
+  text-transform: lowercase;
+}
+
 /* ---------- Summary card (always visible) ---------- */
 .summary-card {
   background:
@@ -978,6 +1007,29 @@ button { font: inherit; }
   background: var(--bg);
 }
 .diff-column .diff-pane { flex: 1; min-height: 0; }
+
+/* ---------- Diff toolbar (View + Theme, above the diff) ---------- */
+.diff-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elev);
+  flex-shrink: 0;
+}
+.diff-toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.diff-toolbar-label {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--fg-faint);
+}
 
 /* ---------- Review check (replaces order badge when toggled) ---------- */
 .review-check {

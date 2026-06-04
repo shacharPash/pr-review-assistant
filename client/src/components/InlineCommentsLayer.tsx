@@ -389,7 +389,11 @@ function ComposerCore({
         setDraft((d) => d + `\n\n_AI ${mode} failed: ${err.error ?? 'unknown error'}_`);
         return;
       }
-      const data = (await res.json()) as { text: string };
+      const data = (await res.json()) as {
+        text: string;
+        usage?: { input: number; output: number; cacheRead: number; cacheCreation: number };
+      };
+      if (data.usage) useStore.getState().recordUsage(data.usage);
       if (mode === 'suggest') {
         // The endpoint returns just the replacement code; wrap as suggestion.
         const block = '\n\n```suggestion\n' + data.text.trim() + '\n```\n';
