@@ -3378,16 +3378,23 @@ button { font: inherit; }
   background: rgba(110, 118, 129, 0.18) !important;
 }
 
-/* Context-expand button — small GitHub-style "↑ Expand 10" / "↓ Expand 10"
- * chips that splice unchanged file context into a hunk on click. Anchored
- * to the hunk's first and last Monaco lines via content widgets. */
+/* Context-expand controls — small GitHub-style "↑ Expand 10" / "↓ Expand 10"
+ * chips that splice unchanged file context into a hunk on click. Rendered in a
+ * dedicated Monaco *view zone* row (`.expand-context-row`) so the chip never
+ * overlaps code. */
+.expand-context-row {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  padding-left: 8px;
+  background: var(--bg-elev);
+}
 .expand-context-btn {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   padding: 1px 8px;
-  margin: 2px 0 2px 4px;
-  background: var(--bg-elev);
+  background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: 10px;
   color: var(--fg-dim);

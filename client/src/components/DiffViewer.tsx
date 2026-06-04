@@ -188,73 +188,65 @@ export function DiffViewer({ file, position }: Props) {
     otherEditor?.layout();
   }, [commentEditor, otherEditor, blameVisible, blameReady, blameEntry, hasFull, newLineMap, oldLineMap, isDeleted, blameWidth]);
 
-  // Context-expansion content widgets — small "↑ 10 more" / "↓ 10 more"
-  // buttons that splice file context into each hunk on click. Skipped in
-  // full-file mode (the surrounding context is already there).
-  const expandWidgetsRef = useRef<unknown[]>([]);
+  // Context-expansion controls — small "↑ Expand 10" / "↓ Expand 10" chips that
+  // splice file context into each hunk on click. Rendered as Monaco *view zones*
+  // (reserved rows) rather than content widgets: a content widget floats ON TOP
+  // of the text, so once context is expanded the chip overlapped the code line
+  // it sat on. A view zone inserts its own dedicated row, so the chip never
+  // covers code. Skipped in full-file mode (context is already present).
+  const expandZonesRef = useRef<string[]>([]);
   useEffect(() => {
     if (!commentEditor) return;
-    // Remove any previously-attached widgets first (otherwise stale ones from
-    // a prior render with a different hunk count would stack up).
-    for (const w of expandWidgetsRef.current) {
-      commentEditor.removeContentWidget(w as Parameters<typeof commentEditor.removeContentWidget>[0]);
-    }
-    expandWidgetsRef.current = [];
-    if (hasFull || !fullReady || !file) return;
 
-    const newWidgets: unknown[] = [];
-    hunkBoundaries.forEach((b) => {
-      // Top-of-hunk widget: "↑ Expand"
-      if (b.canExpandAbove > 0) {
-        const node = document.createElement('div');
-        node.className = 'expand-context-btn';
-        node.innerHTML = `<span class="ec-icon">↑</span><span>Expand ${Math.min(10, b.canExpandAbove)}${b.canExpandAbove > 10 ? '' : ' (last)'}</span>`;
-        node.title = `${b.canExpandAbove} more lines available above this hunk`;
-        node.onclick = (e) => {
-          e.stopPropagation();
-          expandHunk(file.path, b.hunkIdx, 'above', 10);
-        };
-        const widget = {
-          getId: () => `pra.expand-above.${b.hunkIdx}`,
-          getDomNode: () => node,
-          getPosition: () => ({
-            position: { lineNumber: b.monacoStartLine, column: 1 },
-            preference: [1 /* ABOVE */],
-          }),
-        };
-        commentEditor.addContentWidget(widget as Parameters<typeof commentEditor.addContentWidget>[0]);
-        newWidgets.push(widget);
-      }
-      // Bottom-of-hunk widget: "↓ Expand"
-      if (b.canExpandBelow > 0) {
-        const node = document.createElement('div');
-        node.className = 'expand-context-btn';
-        node.innerHTML = `<span class="ec-icon">↓</span><span>Expand ${Math.min(10, b.canExpandBelow)}${b.canExpandBelow > 10 ? '' : ' (last)'}</span>`;
-        node.title = `${b.canExpandBelow} more lines available below this hunk`;
-        node.onclick = (e) => {
-          e.stopPropagation();
-          expandHunk(file.path, b.hunkIdx, 'below', 10);
-        };
-        const widget = {
-          getId: () => `pra.expand-below.${b.hunkIdx}`,
-          getDomNode: () => node,
-          getPosition: () => ({
-            position: { lineNumber: b.monacoEndLine, column: 1 },
-            preference: [2 /* BELOW */],
-          }),
-        };
-        commentEditor.addContentWidget(widget as Parameters<typeof commentEditor.addContentWidget>[0]);
-        newWidgets.push(widget);
-      }
+    const makeChip = (dir: 'above' | 'below', avail: number, hunkIdx: number) => {
+      const row = document.createElement('div');
+      row.className = 'expand-context-row';
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'expand-context-btn';
+      const arrow = dir === 'above' ? '↑' : '↓';
+      chip.innerHTML = `<span class="ec-icon">${arrow}</span><span>Expand ${Math.min(10, avail)}${avail > 10 ? '' : ' (last)'}</span>`;
+      chip.title = `${avail} more lines available ${dir} this hunk`;
+      chip.onclick = (e) => {
+        e.stopPropagation();
+        if (file) expandHunk(file.path, hunkIdx, dir, 10);
+      };
+      row.appendChild(chip);
+      return row;
+    };
+
+    commentEditor.changeViewZones((accessor) => {
+      // Clear any zones from a prior render (different hunk count / expansion).
+      for (const id of expandZonesRef.current) accessor.removeZone(id);
+      expandZonesRef.current = [];
+      if (hasFull || !fullReady || !file) return;
+
+      const ids: string[] = [];
+      hunkBoundaries.forEach((b) => {
+        if (b.canExpandAbove > 0) {
+          ids.push(accessor.addZone({
+            afterLineNumber: b.monacoStartLine - 1, // reserved row just above the hunk
+            heightInLines: 1,
+            domNode: makeChip('above', b.canExpandAbove, b.hunkIdx),
+          }));
+        }
+        if (b.canExpandBelow > 0) {
+          ids.push(accessor.addZone({
+            afterLineNumber: b.monacoEndLine, // reserved row just below the hunk
+            heightInLines: 1,
+            domNode: makeChip('below', b.canExpandBelow, b.hunkIdx),
+          }));
+        }
+      });
+      expandZonesRef.current = ids;
     });
-    expandWidgetsRef.current = newWidgets;
 
     return () => {
-      for (const w of newWidgets) {
-        if (!commentEditor.getModel()?.isDisposed?.()) {
-          commentEditor.removeContentWidget(w as Parameters<typeof commentEditor.removeContentWidget>[0]);
-        }
-      }
+      if (commentEditor.getModel()?.isDisposed?.()) return;
+      commentEditor.changeViewZones((accessor) => {
+        for (const id of expandZonesRef.current) accessor.removeZone(id);
+        expandZonesRef.current = [];
+      });
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [commentEditor, hasFull, fullReady, file?.path, JSON.stringify(hunkBoundaries)]);
