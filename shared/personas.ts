@@ -1,4 +1,4 @@
-export type PersonaId = 'explain' | 'checklist' | 'tweet';
+export type PersonaId = 'explain' | 'checklist';
 
 export interface Persona {
   id: PersonaId;
@@ -49,23 +49,41 @@ If the PR is trivial (dep bump, doc), produce 1-2 items and stop.
 
 Do NOT include any preamble, heading, or summary. Just the list.`,
   },
-  {
-    id: 'tweet',
-    label: 'Tweet',
-    emoji: '🐦',
-    blurb: 'One punchy sentence, under 280 characters.',
-    prompt: `Summarize this pull request in ONE sentence. Strict rules:
-
-- Under 280 characters total — count them
-- Punchy, concrete, names the actual change (not the implementation)
-- May include ONE backticked identifier if it's the killer detail
-- No preamble, no hashtags, no "This PR…"
-- End with a period
-
-Output only the sentence. Nothing else.`,
-  },
 ];
 
 export function findPersona(id: string): Persona | undefined {
   return PERSONAS.find((p) => p.id === id);
+}
+
+/**
+ * Jira-aware checklist prompt. Used in place of the plain `checklist` persona
+ * prompt when a linked ticket has a description we can mine. Instead of the AI
+ * inventing things to verify from the diff, it turns the ticket's acceptance
+ * criteria / Definition of Done into a checklist and flags any item the diff
+ * appears NOT to satisfy — answering "does this PR do what the ticket asked?".
+ *
+ * Output format is identical to the `checklist` persona ("[ ] " lines) so the
+ * client's `parseChecklistItems` parser handles both unchanged.
+ */
+export function buildChecklistAcPrompt(ticketKey: string, description: string): string {
+  return `Generate a reviewer checklist for this pull request, grounded in the
+acceptance criteria / Definition of Done of its linked Jira ticket ${ticketKey}.
+
+The ticket says:
+"""
+${description.trim()}
+"""
+
+Turn the ticket's acceptance criteria / DoD into verification items the reviewer
+can tick off to confirm the PR actually delivers what was asked.
+
+Format rules:
+- 4-7 items total, each on its own line starting with "[ ] " (literal — NOT a markdown checkbox)
+- Each item is one acceptance criterion phrased as a check ("Confirm that…", "Verify the…")
+- Use **bold** for the thing being verified; use \`inline code\` for any function/file name
+- If the diff appears NOT to satisfy a criterion, append " — ⚠ not covered by this PR" to that item
+- If a criterion can't be judged from the diff, append " — ⚠ verify manually"
+- Ignore acceptance criteria that are clearly out of scope for a code review (e.g. design sign-off)
+
+Do NOT include any preamble, heading, or summary. Just the list.`;
 }

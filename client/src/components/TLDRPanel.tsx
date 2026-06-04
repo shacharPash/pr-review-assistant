@@ -3,26 +3,28 @@ import { useStore } from '../state/store.js';
 import { usePrefs } from '../state/preferences.js';
 import { DiagramPanel } from './DiagramPanel.js';
 import { ReviewActivityPane } from './ReviewActivityPane.js';
+import { JiraIcon } from './JiraIcon.js';
+import { RailSectionHead } from './RailSectionHead.js';
 import type { PersonaId } from '@shared/personas';
+import { checklistSource } from '@shared/jira';
 
 type Kind = 'core' | 'risk' | 'note';
 interface Bullet { kind: Kind; text: string; }
 
-const KIND_LABEL: Record<Kind, string> = { core: '★', risk: '!', note: '·' };
-const KIND_TITLE: Record<Kind, string> = {
-  core: 'Core change', risk: 'Watch out for', note: 'Context',
+// Per-kind presentation for the Changes & Risks card stack.
+const KIND_TAG: Record<Kind, string> = {
+  core: 'Core change', risk: '⚠ Risk', note: 'Context',
 };
 
 type TabId = 'brief' | PersonaId | 'activity';
 
-// Plain English first — it streams faster than Brief (which needs deeper
+// Plain English first — it streams faster than Key Points (which needs deeper
 // model reasoning to name specific files/risks) so the user gets readable
-// output sooner. Brief still pre-warms in the background.
+// output sooner. The other tabs still pre-warm in the background.
 const TABS: { id: TabId; emoji: string; label: string }[] = [
   { id: 'explain', emoji: '💬', label: 'Plain English' },
-  { id: 'brief', emoji: '📌', label: 'Brief' },
+  { id: 'brief', emoji: '🎯', label: 'Key Points' },
   { id: 'checklist', emoji: '✅', label: 'Checklist' },
-  { id: 'tweet', emoji: '🐦', label: 'Tweet' },
   { id: 'activity', emoji: '🤖', label: 'Activity' },
 ];
 
@@ -44,7 +46,6 @@ export function TLDRPanel() {
   useEffect(() => {
     if (!bundle) return;
     if (!personaResults.checklist) selectTab('checklist');
-    if (!personaResults.tweet) selectTab('tweet');
     if (!personaResults.explain) selectTab('explain');
     selectTab('explain');
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -55,14 +56,15 @@ export function TLDRPanel() {
 
   if (collapsed) {
     return (
-      <button className="tldr-collapsed-pill" onClick={toggleTLDR} title="Show summary">
-        <span>📌 Show summary</span>
-      </button>
+      <div className="tldr rail-section is-collapsed">
+        <RailSectionHead title="💡 Insights" collapsed onToggle={toggleTLDR} />
+      </div>
     );
   }
 
   return (
-    <div className="tldr">
+    <div className="tldr rail-section">
+      <RailSectionHead title="💡 Insights" collapsed={false} onToggle={toggleTLDR} />
       <div className="tldr-tabs" role="tablist">
         {TABS.map((t) => (
           <button
@@ -76,14 +78,6 @@ export function TLDRPanel() {
             <span>{t.label}</span>
           </button>
         ))}
-        <button
-          className="tldr-close"
-          onClick={toggleTLDR}
-          title="Hide summary (more room for files)"
-          aria-label="Hide summary"
-        >
-          ✕
-        </button>
       </div>
 
       {activeTab === 'brief' && <BriefTab tldr={tldr} retry={retry} />}
@@ -97,12 +91,6 @@ export function TLDRPanel() {
         <PersonaPaneChecklist
           result={personaResults.checklist}
           retry={() => retryPersona('checklist')}
-        />
-      )}
-      {activeTab === 'tweet' && (
-        <PersonaPaneTweet
-          result={personaResults.tweet}
-          retry={() => retryPersona('tweet')}
         />
       )}
       {activeTab === 'activity' && <ReviewActivityPane />}
@@ -151,15 +139,35 @@ function BriefTab({
     );
   }
   return (
-    <div className="tldr-body">
-      {bullets.map((b, i) => (
-        <div key={i} className={`tldr-bullet ${b.kind}`} title={KIND_TITLE[b.kind]}>
-          <div className="icon">{KIND_LABEL[b.kind]}</div>
-          <div className="text" dangerouslySetInnerHTML={{ __html: renderInline(b.text) }} />
-        </div>
-      ))}
+    <div className="tldr-body cards">
+      {bullets.map((b, i) => {
+        const ref = extractRef(b.text);
+        return (
+          <div key={i} className={`insight ${b.kind}`}>
+            <div className="insight-top">
+              <span className="insight-tag">{KIND_TAG[b.kind]}</span>
+              {ref && <span className="insight-ref">{ref}</span>}
+            </div>
+            <div
+              className="insight-text"
+              dangerouslySetInnerHTML={{ __html: renderRich(b.text) }}
+            />
+          </div>
+        );
+      })}
     </div>
   );
+}
+
+/**
+ * Pull a `file.ext:line` (or `file.ext:line-line`) reference out of a bullet so
+ * it can be pinned as a chip in the card header — it's the payoff of this pane
+ * (where to look), so it shouldn't stay buried in the prose. Returns the first
+ * match; the text still renders in full below.
+ */
+function extractRef(text: string): string | null {
+  const m = text.match(/\b([\w./-]+\.[A-Za-z]{1,5}:\d+(?:-\d+)?)\b/);
+  return m ? m[1] : null;
 }
 
 function PersonaPaneExplain({
@@ -213,6 +221,8 @@ function PersonaPaneChecklist({
 }) {
   // Local-only checkmark state; not persisted because it's a thinking tool, not a record.
   const [checked, setChecked] = useState<Record<number, boolean>>({});
+  const jira = useStore((s) => s.bundle?.jira);
+  const source = checklistSource(jira);
 
   if (!result || (result.status === 'streaming' && !result.text)) {
     return (
@@ -237,6 +247,7 @@ function PersonaPaneChecklist({
 
   return (
     <div className="persona-body checklist">
+      <ChecklistSource source={source} />
       {items.map((item, i) => (
         <label key={i} className={`check-item ${checked[i] ? 'done' : ''}`}>
           <input
@@ -255,74 +266,80 @@ function PersonaPaneChecklist({
   );
 }
 
-function PersonaPaneTweet({
-  result,
-  retry,
-}: {
-  result: ReturnType<typeof useStore.getState>['personaResults']['tweet'];
-  retry: () => void;
-}) {
-  if (!result || (result.status === 'streaming' && !result.text)) {
+/**
+ * Tells the reviewer where the checklist items came from: the linked Jira
+ * ticket's acceptance criteria (when fully connected) or AI-generated from the
+ * diff. Mirrors the server's prompt choice — both call `checklistSource`.
+ */
+function ChecklistSource({ source }: { source: ReturnType<typeof checklistSource> }) {
+  if (source.mode === 'jira') {
     return (
-      <div className="tldr-skeleton" aria-label="Crafting the one-liner">
-        <div className="skel-row" style={{ width: '96%' }} />
-        <div className="skel-row" style={{ width: '64%' }} />
+      <div className="checklist-source jira">
+        <JiraIcon size={13} className="" />
+        <span>
+          Acceptance criteria from <span className="key">{source.ticket.key}</span>
+        </span>
+        <a className="open" href={source.ticket.url} target="_blank" rel="noreferrer">
+          open ticket →
+        </a>
       </div>
     );
   }
-  if (result.status === 'error') {
-    return (
-      <div className="tldr-error">
-        {result.error}
-        <button className="link-btn retry" onClick={retry}>Retry</button>
-      </div>
-    );
-  }
-  const text = result.text.trim();
-  const len = text.length;
   return (
-    <div className="persona-body tweet">
-      <div
-        className="tweet-text"
-        dangerouslySetInnerHTML={{ __html: renderInline(text) }}
-      />
-      {result.status === 'streaming' && <span className="cursor" />}
-      {result.status === 'done' && (
-        <div className={`tweet-meta ${len > 280 ? 'over' : ''}`}>
-          {len} / 280 characters
-        </div>
-      )}
+    <div className="checklist-source ai">
+      <span aria-hidden="true">✨</span>
+      <span>AI-generated from the diff — verify before approving</span>
     </div>
   );
 }
+
+// A bullet line begins when it opens with a CHANGE/RISK/CONTEXT tag (the
+// prompt's contract), with an optional leading "-"/"*"/"•" the model may still
+// add. Captures the tag and the remaining text.
+const TAGGED_LINE = /^(?:[-*•]\s*)?(CHANGE|RISK|CONTEXT)\b\s*[:.\-–]?\s*(.*)$/i;
+
+const TAG_KIND: Record<string, Kind> = { change: 'core', risk: 'risk', context: 'note' };
 
 function parseBullets(text: string): Bullet[] {
   const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
   const result: Bullet[] = [];
   let current: string | null = null;
+  let currentKind: Kind | null = null;
   const push = () => {
-    if (!current) return;
-    result.push({ kind: classify(current), text: current.trim() });
+    if (current == null) return;
+    const text = current.trim();
+    if (text) result.push({ kind: currentKind ?? classify(text), text });
     current = null;
+    currentKind = null;
   };
   for (const line of lines) {
-    if (/^[-*•]\s+/.test(line)) {
+    const tagged = line.match(TAGGED_LINE);
+    if (tagged) {
+      push();
+      currentKind = TAG_KIND[tagged[1].toLowerCase()];
+      current = tagged[2];
+    } else if (/^[-*•]\s+/.test(line)) {
+      // Legacy untagged bullet — fall back to keyword classification.
       push();
       current = line.replace(/^[-*•]\s+/, '');
-    } else if (current) {
+    } else if (current != null) {
       current += ' ' + line;
     } else {
-      current = (current ?? '') + ' ' + line;
+      current = line;
     }
   }
   push();
   return result.length > 0 ? result : [{ kind: 'note', text: text.trim() }];
 }
 
+// Fallback only — used when a bullet has no explicit CHANGE/RISK/CONTEXT tag
+// (older cached output, or a model that ignored the format). Scans the whole
+// bullet, not just the first 80 chars, so a leading file path doesn't crowd
+// out the signal word.
 function classify(text: string): Kind {
-  const lc = text.toLowerCase().slice(0, 80);
-  if (/risk\b|risky|concern|watch out|silently|race|deadlock|leak|gotcha|edge case|missing test|no test/.test(lc)) return 'risk';
-  if (/core (change|fix)|main change|fixes?|adds?\b|removes?\b|replaces?|introduces?|now (composes|computes|returns|skips|uses)|moves? from/.test(lc)) return 'core';
+  const lc = text.toLowerCase();
+  if (/\brisk\b|\brisky\b|concern|watch out|silently|race|deadlock|leak|gotcha|edge case|missing test|no test/.test(lc)) return 'risk';
+  if (/core (change|fix)|main change|\bfix(es|ed)?\b|\badds?\b|\bremoves?\b|\breplaces?\b|introduces?|now (composes|computes|returns|skips|uses)|moves? from/.test(lc)) return 'core';
   return 'note';
 }
 
@@ -347,12 +364,6 @@ function parseChecklistItems(text: string): string[] {
   }
   push();
   return out;
-}
-
-/** Inline backticks → <code>. HTML-escaped. */
-function renderInline(text: string): string {
-  const escaped = escapeHTML(text);
-  return escaped.replace(/`([^`]+)`/g, '<code>$1</code>');
 }
 
 /** Inline backticks + **bold** + auto-link of bare http URLs. */

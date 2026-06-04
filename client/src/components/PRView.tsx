@@ -3,8 +3,8 @@ import { useStore, selectDisplayFiles } from '../state/store.js';
 import { usePrefs } from '../state/preferences.js';
 import { FileSidebar } from './FileSidebar.js';
 import { DiffViewer } from './DiffViewer.js';
+import { SummaryCard } from './SummaryCard.js';
 import { TLDRPanel } from './TLDRPanel.js';
-import { TLDRResizer } from './TLDRResizer.js';
 import { RailResizer } from './RailResizer.js';
 import { ReviewFooter } from './ReviewFooter.js';
 import { LandingHero } from './LandingHero.js';
@@ -16,8 +16,6 @@ export function PRView() {
   const activePath = useStore((s) => s.activeFilePath);
   const showNoise = useStore((s) => s.showNoise);
   const files = useStore(selectDisplayFiles);
-  const tldrHeight = usePrefs((s) => s.tldrHeight);
-  const tldrCollapsed = usePrefs((s) => s.tldrCollapsed);
   const railWidth = usePrefs((s) => s.railWidth);
 
   const { activeFile, position } = useMemo(() => {
@@ -56,14 +54,14 @@ export function PRView() {
   return (
     <div className="main" style={{ gridTemplateColumns: `${effectiveRail}px 6px minmax(0, 1fr)` }}>
       <aside className="left-rail">
-        <div
-          className="tldr-slot"
-          style={tldrCollapsed ? undefined : { height: tldrHeight }}
-        >
+        {/* The three sections scroll together; each can collapse to a slim
+            header (Summary / Insights / Files) so the reviewer can focus.
+            The footer stays pinned below the scroll area. */}
+        <div className="rail-scroll">
+          <SummaryCard />
           <TLDRPanel />
+          <FileSidebar />
         </div>
-        <TLDRResizer />
-        <FileSidebar />
         <ReviewFooter />
       </aside>
       <RailResizer />

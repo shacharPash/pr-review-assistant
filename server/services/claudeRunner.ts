@@ -15,7 +15,7 @@ export interface RunOptions {
    * full id like 'claude-sonnet-4-6'). Defaults to the user's `claude` CLI
    * default — usually whatever they're authenticated with — which can be
    * Opus and therefore slow for short outputs. Short-form routes (headline,
-   * tweet, plain-english) should override to 'sonnet' for ~3× faster
+   * plain-english, checklist) should override to 'sonnet' for ~3× faster
    * generation with no meaningful quality drop on those tasks.
    */
   model?: string;
@@ -267,8 +267,10 @@ ${diff}`;
  * Includes ONLY the ticket key, type, status, and title — not the
  * description. The description (up to several KB of corporate Jira prose)
  * was historically inlined here, but it diluted strict prompt instructions
- * (e.g. the tweet's "no preamble" rule) and Claude would echo its register
- * verbatim ("The summary is the only output requested.", "Let me write…").
+ * (e.g. the short personas' "no preamble" rules) and Claude would echo its
+ * register verbatim ("The summary is the only output requested.", "Let me write…").
+ * The checklist's Jira-AC mode is the deliberate exception: it injects the
+ * ticket description via its own system prompt (see routes/explain.ts), not here.
  * Title + status is enough linkage; the user can read the full ticket via
  * the Jira badge popover.
  */
@@ -301,25 +303,24 @@ function buildPrompt(bundle: PRBundle): string {
 NOT to review the code yourself — only to point them at what matters so they
 review faster and don't miss anything.
 
-Write 2–4 short bullets in plain text (no markdown headers, no preamble).
-Be CONCRETE. Forbidden:
+Write 2–4 short bullets, ONE per line. Start EACH line with one of these
+tags (UPPERCASE, followed by a colon) so each can be classified exactly:
 
-- Generic phrases like "improves the codebase", "various fixes", "refactors
-  for clarity". If your bullet would also fit on an unrelated PR, rewrite it.
-- Vague risk like "may introduce bugs". Name an actual line, function, or
-  edge case.
+- "CHANGE:" — the single most important behavior change: what changed and
+  where (file path AND function name or line range). Emit EXACTLY one.
+- "RISK:" — the one thing the reviewer should scrutinize most. Name an actual
+  line, function, or edge case (not "may introduce bugs"). Emit EXACTLY one.
+- "CONTEXT:" — an optional non-obvious blast-radius point, a missing test, or
+  a callsite worth checking. Emit 0–2, only if real.
 
-Required (exactly one of each, in this order):
+Order: CHANGE first, then RISK, then any CONTEXT. No markdown headers, no
+preamble, no leading "-"/"*" — just "TAG: text", one per line.
 
-1. The single most important behavior change — what changed and where (file
-   path AND function name or line range).
-2. The thing the reviewer should pay EXTRA attention to. Start the bullet
-   with the word "Risk:" or "Watch out:" or "Concern:" so it's classifiable.
-   Pick the most load-bearing risk; don't list five.
-3. (Optional) One context bullet — a non-obvious blast-radius point, a
-   missing test, or a callsite worth checking. Skip if there isn't a real one.
+Be CONCRETE. Forbidden: generic phrasing like "improves the codebase",
+"various fixes", "refactors for clarity" — if a bullet would also fit an
+unrelated PR, rewrite it.
 
-If the PR is a tiny dep bump or doc change, say so in one bullet and stop.
+If the PR is a tiny dep bump or doc change, emit a single "CHANGE:" line and stop.
 
 PR title: ${meta.title}
 Author: ${meta.author}
