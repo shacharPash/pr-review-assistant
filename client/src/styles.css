@@ -3368,12 +3368,23 @@ button { font: inherit; }
 .monaco-editor .line-numbers.blame-age-unknown {
   text-align: left !important;
   padding-left: 6px;
-  padding-right: 6px;
+  /* No right padding: the line number is the last column and right padding
+     would shove it past the tinted element's edge onto the bare gutter. */
+  padding-right: 0;
 }
 
 .diff-monaco {
   flex: 1;
   min-height: 0;
+}
+
+/* Round the intra-line (word-level) diff highlights — the red/green spans
+ * Monaco draws on the part of a line that actually changed — so they read
+ * like GitHub's token highlights instead of hard rectangles. Whole-line
+ * insert/delete backgrounds (.line-insert/.line-delete) are left square. */
+.monaco-editor .char-insert,
+.monaco-editor .char-delete {
+  border-radius: 3px;
 }
 .diff-placeholder {
   flex: 1;
