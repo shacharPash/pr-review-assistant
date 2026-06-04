@@ -149,9 +149,16 @@ export function DiffViewer({ file, position }: Props) {
     // matches the user's chosen blame width when ON. We only reserve
     // those wide chars when actually showing blame — solves the
     // "empty stripe when blame is off" problem.
+    //
+    // The blame string is sized to exactly `blameWidth` chars, and the gutter
+    // CSS insets it with horizontal padding — so reserving exactly `blameWidth`
+    // chars squeezes the trailing line number past the tinted element's right
+    // edge (it landed on the un-tinted decorations margin). Reserve +2 chars of
+    // slack so the whole string — including the line number — stays inside the
+    // age-tinted background.
     commentEditor.updateOptions({
       lineNumbers: modifiedLineNumbers,
-      lineNumbersMinChars: blameOn ? blameWidth : 4,
+      lineNumbersMinChars: blameOn ? blameWidth + 2 : 4,
     });
 
     if (otherEditor) {
