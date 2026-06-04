@@ -3377,15 +3377,6 @@ button { font: inherit; }
   flex: 1;
   min-height: 0;
 }
-
-/* Round the intra-line (word-level) diff highlights — the red/green spans
- * Monaco draws on the part of a line that actually changed — so they read
- * like GitHub's token highlights instead of hard rectangles. Whole-line
- * insert/delete backgrounds (.line-insert/.line-delete) are left square. */
-.monaco-editor .char-insert,
-.monaco-editor .char-delete {
-  border-radius: 3px;
-}
 .diff-placeholder {
   flex: 1;
   display: grid;
