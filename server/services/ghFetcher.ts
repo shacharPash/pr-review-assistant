@@ -63,6 +63,8 @@ interface GHViewJSON {
   baseRefOid: string;
   url: string;
   state: string;
+  isDraft?: boolean;
+  reviewDecision?: string | null;
   commits: {
     oid: string;
     messageHeadline: string;
@@ -91,7 +93,7 @@ export async function fetchPR(input: string): Promise<PRBundle> {
   const ref = parsePRRef(input);
   const repoSlug = `${ref.owner}/${ref.repo}`;
   const viewFields =
-    'number,title,body,author,headRefOid,baseRefOid,url,state,commits';
+    'number,title,body,author,headRefOid,baseRefOid,url,state,isDraft,reviewDecision,commits';
   // gh's --json commits gives an array with oid, messageHeadline, messageBody,
   // committedDate, and authors (each with login + name) — that's enough to
   // populate our PRCommit[].
@@ -123,6 +125,8 @@ export async function fetchPR(input: string): Promise<PRBundle> {
     baseSha: view.baseRefOid,
     url: view.url,
     state: normalizeState(view.state),
+    isDraft: view.isDraft ?? false,
+    reviewDecision: normalizeReviewDecision(view.reviewDecision),
   };
 
   const files = reorderForReading(annotateNoise(parseUnifiedDiff(diffRaw)));
@@ -177,4 +181,14 @@ function normalizeState(s: string): PRMeta['state'] {
   const lower = s.toLowerCase();
   if (lower === 'open' || lower === 'closed' || lower === 'merged') return lower;
   return 'open';
+}
+
+/** gh returns APPROVED | CHANGES_REQUESTED | REVIEW_REQUIRED | "" (or null). */
+function normalizeReviewDecision(d: string | null | undefined): PRMeta['reviewDecision'] {
+  switch ((d ?? '').toUpperCase()) {
+    case 'APPROVED': return 'approved';
+    case 'CHANGES_REQUESTED': return 'changes_requested';
+    case 'REVIEW_REQUIRED': return 'review_required';
+    default: return null;
+  }
 }

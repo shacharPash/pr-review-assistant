@@ -50,6 +50,12 @@ export interface PRMeta {
   baseSha: string;
   url: string;
   state: 'open' | 'closed' | 'merged';
+  /** Open PRs can be drafts; combined with `state` this gives the GitHub
+   * status set: Draft / Open / Merged / Closed. */
+  isDraft: boolean;
+  /** GitHub's aggregate review decision, or null when none applies (e.g. no
+   * reviewers requested, or the PR is closed/merged). */
+  reviewDecision: 'approved' | 'changes_requested' | 'review_required' | null;
 }
 
 export interface PRCommit {
