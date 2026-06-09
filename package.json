@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "setup": "bash bin/setup.sh",
+    "install-agent": "bash bin/install-agent.sh",
+    "uninstall-agent": "bash bin/uninstall-agent.sh",
     "dev": "tsx watch --env-file-if-exists=.env --ignore '**/vite.config.ts.timestamp-*' --ignore '**/dist/**' --ignore '**/client/**' server/index.ts",
     "start": "npm run setup && npm run dev",
     "build": "tsc -b && vite build",
