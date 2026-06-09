@@ -75,7 +75,10 @@ async function main() {
       }
     });
   } else {
-    const clientDist = path.resolve(ROOT, 'dist/client');
+    // In production the compiled entry is dist/server/index.js, so the built
+    // client sits next to it at dist/client (../client from here). Resolving
+    // off ROOT would double-count the dist segment.
+    const clientDist = path.resolve(__dirname, '../client');
     app.use(express.static(clientDist));
     app.use('*', (_req, res) => {
       res.sendFile(path.join(clientDist, 'index.html'));
