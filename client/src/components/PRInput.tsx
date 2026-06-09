@@ -1,10 +1,19 @@
-import { useState, type FormEvent } from 'react';
+import { useState, useEffect, type FormEvent } from 'react';
 import { useStore } from '../state/store.js';
 
 export function PRInput() {
   const loading = useStore((s) => s.loading);
   const loadPR = useStore((s) => s.loadPR);
-  const [value, setValue] = useState('');
+  const currentUrl = useStore((s) => s.bundle?.meta.url ?? '');
+  const [value, setValue] = useState(currentUrl);
+
+  // Show the PR that's currently loaded (e.g. opened via the extension deep
+  // link) instead of an empty box. Only re-syncs when a different PR loads —
+  // it won't clobber what the user is mid-typing, since currentUrl is stable
+  // until the next successful load.
+  useEffect(() => {
+    setValue(currentUrl);
+  }, [currentUrl]);
 
   function onSubmit(e: FormEvent) {
     e.preventDefault();
