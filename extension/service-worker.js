@@ -4,17 +4,15 @@ const BASE = 'http://localhost:5173';
 const HEALTH_TIMEOUT_MS = 1500;
 
 chrome.action.onClicked.addListener(async (tab) => {
-  const parsed = parsePrUrl(tab?.url);
-  if (!parsed) {
-    notify('Open a GitHub PR first', 'Go to a github.com pull request, then click the icon.');
+  if (!(await serverIsUp())) {
+    chrome.tabs.create({ url: chrome.runtime.getURL('help.html') });
     return;
   }
-  const prUrl = canonicalPrUrl(parsed);
-  if (await serverIsUp()) {
-    chrome.tabs.create({ url: buildTargetUrl(prUrl, BASE) });
-  } else {
-    chrome.tabs.create({ url: chrome.runtime.getURL('help.html') });
-  }
+  // On a PR page, deep-link to it; anywhere else, just open the app's landing
+  // page so the icon is always useful (paste a PR URL there).
+  const parsed = parsePrUrl(tab?.url);
+  const url = parsed ? buildTargetUrl(canonicalPrUrl(parsed), BASE) : BASE;
+  chrome.tabs.create({ url });
 });
 
 async function serverIsUp() {
@@ -28,13 +26,4 @@ async function serverIsUp() {
   } finally {
     clearTimeout(timer);
   }
-}
-
-function notify(title, message) {
-  chrome.notifications.create({
-    type: 'basic',
-    iconUrl: 'icons/icon-48.png',
-    title,
-    message,
-  });
 }

@@ -3,7 +3,7 @@
   "name": "PR Review Assistant",
   "version": "0.1.0",
   "description": "Open the current GitHub pull request in your local PR Review Assistant.",
-  "permissions": ["activeTab", "notifications"],
+  "permissions": ["activeTab"],
   "host_permissions": ["http://localhost:5173/*"],
   "background": {
     "service_worker": "service-worker.js",
