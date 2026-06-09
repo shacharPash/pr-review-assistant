@@ -23,6 +23,7 @@ SAFE_PATH="${PATH//&/\\&}"
 # Render the plist. Use '|' as the sed delimiter since paths contain '/'.
 sed -e "s|__NODE__|$NODE_BIN|g" \
     -e "s|__ENTRY__|$ENTRY|g" \
+    -e "s|__REPO__|$REPO|g" \
     -e "s|__PATH__|$SAFE_PATH|g" \
     -e "s|__PORT__|$PORT|g" \
     -e "s|__LOG__|$LOG|g" \

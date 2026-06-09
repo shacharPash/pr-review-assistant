@@ -9,6 +9,8 @@
     <string>__NODE__</string>
     <string>__ENTRY__</string>
   </array>
+  <key>WorkingDirectory</key>
+  <string>__REPO__</string>
   <key>EnvironmentVariables</key>
   <dict>
     <key>NODE_ENV</key>
