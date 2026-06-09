@@ -9,7 +9,7 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
-    "outDir": "./dist/server",
+    "outDir": "./dist",
     "rootDir": ".",
     "composite": true,
     "declaration": true,

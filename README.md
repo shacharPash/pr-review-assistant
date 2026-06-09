@@ -20,6 +20,34 @@ git clone https://github.com/shacharPash/pr-review-assistant.git && cd pr-review
 
 ---
 
+## Even faster: the Chrome extension (one click from any PR)
+
+Skip the terminal entirely after a one-time setup:
+
+1. **Install the always-on server** (one time):
+   ```bash
+   npm run install-agent
+   ```
+   This builds the app and registers a macOS launchd agent that runs the
+   server in the background, restarts it if it crashes, and starts it at
+   login. Remove it any time with `npm run uninstall-agent`.
+
+2. **Load the extension** (one time): open `chrome://extensions`, enable
+   **Developer mode**, click **Load unpacked**, and select the `extension/`
+   folder. Click the 🧩 puzzle-piece and **pin** "PR Review Assistant".
+
+3. **Use it:** on any GitHub PR, click the pinned copper-bloom icon. A new tab
+   opens with the PR already loading.
+
+The extension only reads the current tab's URL when you click it (`activeTab`),
+talks only to `localhost`, and never touches your code or credentials — all of
+that stays in the local server, exactly as before.
+
+**After `git pull`:** re-run `npm run install-agent` to rebuild and restart the
+background server with the latest code.
+
+---
+
 ## What you get
 
 **Understand the PR** — a left panel with everything you need to get oriented:
