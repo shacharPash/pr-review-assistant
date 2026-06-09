@@ -11,6 +11,8 @@
   </array>
   <key>EnvironmentVariables</key>
   <dict>
+    <key>NODE_ENV</key>
+    <string>production</string>
     <key>PORT</key>
     <string>__PORT__</string>
     <key>PATH</key>
