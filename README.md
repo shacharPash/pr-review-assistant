@@ -22,12 +22,17 @@ git clone https://github.com/shacharPash/pr-review-assistant.git && cd pr-review
 
 ## One click from any PR: the Chrome extension
 
-1. **Start the server** (in a terminal, leave it open while you review):
+1. **Start the server** (leave it running while you review):
    ```bash
    npm run serve
    ```
    Keeping it in your own terminal matters: the spawned `claude` shares your
    interactive session, so its login refreshes automatically.
+
+   **Tip — skip the terminal:** run `npm run make-launcher` once to drop a
+   double-clickable **"PR Review Assistant.command"** on your Desktop. Drag it
+   into the Dock; from then on a double-click starts the server (no `cd`, no
+   typing). Close the window to stop.
 
 2. **Load the extension** (one time): open `chrome://extensions`, enable
    **Developer mode**, click **Load unpacked**, and select the `extension/`
