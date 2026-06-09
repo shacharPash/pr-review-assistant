@@ -10,6 +10,7 @@
     "dev": "tsx watch --env-file-if-exists=.env --ignore '**/vite.config.ts.timestamp-*' --ignore '**/dist/**' --ignore '**/client/**' server/index.ts",
     "start": "npm run setup && npm run dev",
     "build": "tsc -b && vite build",
+    "serve": "npm run build && NODE_ENV=production node --env-file-if-exists=.env dist/server/index.js",
     "preview": "NODE_ENV=production node --env-file-if-exists=.env dist/server/index.js",
     "typecheck": "tsc -b --noEmit",
     "test": "vitest run"

@@ -17,10 +17,14 @@
     <p>The PR Review Assistant couldn't reach <code>http://localhost:5173</code>.</p>
     <p>Start it from the project directory:</p>
     <pre>cd pr-review-assistant
-npm run install-agent   # one-time: installs the always-on background server</pre>
+npm run serve</pre>
     <p class="muted">
-      Already installed? It may still be starting — wait a moment and click the
-      icon again. Logs: <code>~/Library/Logs/pr-review-assistant.log</code>.
+      Leave that terminal open while you review — it keeps the server (and your
+      Claude session) alive. Then click the icon again.
+    </p>
+    <p class="muted">
+      On a <em>personal</em> (non-org-managed) Claude account you can instead run
+      <code>npm run install-agent</code> once for an always-on background server.
     </p>
   </body>
 </html>

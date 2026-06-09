@@ -20,31 +20,37 @@ git clone https://github.com/shacharPash/pr-review-assistant.git && cd pr-review
 
 ---
 
-## Even faster: the Chrome extension (one click from any PR)
+## One click from any PR: the Chrome extension
 
-Skip the terminal entirely after a one-time setup:
-
-1. **Install the always-on server** (one time):
+1. **Start the server** (in a terminal, leave it open while you review):
    ```bash
-   npm run install-agent
+   npm run serve
    ```
-   This builds the app and registers a macOS launchd agent that runs the
-   server in the background, restarts it if it crashes, and starts it at
-   login. Remove it any time with `npm run uninstall-agent`.
+   Keeping it in your own terminal matters: the spawned `claude` shares your
+   interactive session, so its login refreshes automatically.
 
 2. **Load the extension** (one time): open `chrome://extensions`, enable
    **Developer mode**, click **Load unpacked**, and select the `extension/`
    folder. Click the 🧩 puzzle-piece and **pin** "PR Review Assistant".
 
 3. **Use it:** on any GitHub PR, click the pinned copper-bloom icon. A new tab
-   opens with the PR already loading.
+   opens with the PR already loading. (Off a PR, it opens the app's landing
+   page.)
 
 The extension only reads the current tab's URL when you click it (`activeTab`),
 talks only to `localhost`, and never touches your code or credentials — all of
-that stays in the local server, exactly as before.
+that stays in the local server.
 
-**After `git pull`:** re-run `npm run install-agent` to rebuild and restart the
-background server with the latest code.
+### Optional: always-on background server
+
+```bash
+npm run install-agent     # macOS launchd; npm run uninstall-agent to remove
+```
+Runs the server in the background and starts it at login, so you never start it
+manually. **Caveat:** if your Claude is **org-managed** (enterprise), a headless
+background process can't refresh the login, so you'd have to `claude auth login`
+repeatedly — use `npm run serve` instead. The agent is ideal for **personal**
+Claude accounts. After `git pull`, re-run `npm run install-agent` to rebuild.
 
 ---
 
