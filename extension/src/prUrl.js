@@ -1,7 +1,8 @@
 // Pure helpers for the PR Review Assistant extension. No chrome.* / fetch here
 // so this module is unit-testable with vitest.
 
-const PR_RE = /^https?:\/\/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/i;
+// number capture is group 3; the trailing group is non-capturing.
+const PR_RE = /^https?:\/\/github\.com\/([^/]+)\/([^/]+)\/pull\/([1-9]\d*)(?:[/?#]|$)/i;
 
 /**
  * Parse a browser-tab URL into PR parts, or null if it is not a GitHub PR page.
@@ -21,6 +22,7 @@ export function canonicalPrUrl({ owner, repo, number }) {
   return `https://github.com/${owner}/${repo}/pull/${number}`;
 }
 
+// Default base is the app's dev/prod port — keep in sync with server/index.ts.
 /** Build the assistant target URL that auto-loads the PR via the app's ?pr= param. */
 export function buildTargetUrl(prUrl, base = 'http://localhost:5173') {
   return `${base}/?pr=${encodeURIComponent(prUrl)}`;
