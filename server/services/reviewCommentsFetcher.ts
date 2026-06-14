@@ -6,6 +6,7 @@ import {
   type PRComments,
   type PRLevelComment,
   type ReviewAuthor,
+  type ReviewThread,
 } from '../../shared/reviewComments.js';
 
 const execFileAsync = promisify(execFile);
@@ -15,22 +16,6 @@ interface GHUser {
   type: 'Bot' | 'User';
   avatar_url: string;
   html_url: string;
-}
-
-interface GHInline {
-  id: number;
-  node_id: string;
-  user: GHUser;
-  body: string;
-  path: string;
-  line: number | null;
-  original_line: number | null;
-  start_line: number | null;
-  original_start_line: number | null;
-  side: 'LEFT' | 'RIGHT' | null;
-  created_at: string;
-  html_url: string;
-  pull_request_review_id?: number | null;
 }
 
 interface GHReview {
@@ -83,6 +68,94 @@ async function ghApiJSON<T>(path: string): Promise<T> {
   return out as unknown as T;
 }
 
+export interface GHThreadComment {
+  databaseId: number;
+  author: { login: string; url: string; avatarUrl: string; __typename: 'Bot' | 'User' } | null;
+  body: string;
+  path: string;
+  line: number | null;
+  originalLine: number | null;
+  startLine: number | null;
+  originalStartLine: number | null;
+  diffSide: 'LEFT' | 'RIGHT' | null;
+  createdAt: string;
+  url: string;
+}
+export interface GHThreadNode {
+  id: string;
+  isResolved: boolean;
+  isOutdated: boolean;
+  comments: { nodes: GHThreadComment[] };
+}
+export interface GHThreadsResponse {
+  data: { repository: { pullRequest: { reviewThreads: { nodes: GHThreadNode[] } } } };
+}
+
+function authorFromGraphQL(a: GHThreadComment['author']): ReviewAuthor {
+  if (!a) {
+    return { login: 'ghost', type: 'User', avatarUrl: '', htmlUrl: '', brand: null };
+  }
+  return toAuthor({ login: a.login, type: a.__typename, avatar_url: a.avatarUrl, html_url: a.url });
+}
+
+/** Pure: GraphQL reviewThreads response -> ReviewThread[]. */
+export function mapReviewThreads(resp: GHThreadsResponse): ReviewThread[] {
+  const nodes = resp.data?.repository?.pullRequest?.reviewThreads?.nodes ?? [];
+  const out: ReviewThread[] = [];
+  for (const node of nodes) {
+    const raw = node.comments?.nodes ?? [];
+    if (raw.length === 0) continue;
+    const root = raw[0];
+    const comments: InlineReviewComment[] = raw.map((c) => ({
+      id: String(c.databaseId),
+      author: authorFromGraphQL(c.author),
+      body: c.body,
+      path: c.path,
+      line: (c.line ?? c.originalLine) as number,
+      startLine: (c.startLine ?? c.originalStartLine) ?? undefined,
+      side: c.diffSide ?? 'RIGHT',
+      createdAt: c.createdAt,
+      htmlUrl: c.url,
+    }));
+    out.push({
+      id: node.id,
+      isResolved: node.isResolved,
+      isOutdated: node.isOutdated,
+      path: root.path,
+      line: (root.line ?? root.originalLine) as number,
+      startLine: (root.startLine ?? root.originalStartLine) ?? undefined,
+      side: root.diffSide ?? 'RIGHT',
+      replyToId: String(root.databaseId),
+      comments,
+    });
+  }
+  return out;
+}
+
+async function fetchReviewThreads(owner: string, repo: string, number: number): Promise<ReviewThread[]> {
+  const query = `query($owner:String!,$repo:String!,$number:Int!){
+    repository(owner:$owner,name:$repo){ pullRequest(number:$number){
+      reviewThreads(first:100){ nodes{
+        id isResolved isOutdated
+        comments(first:100){ nodes{
+          databaseId author{ login url avatarUrl __typename }
+          body path line originalLine startLine originalStartLine diffSide createdAt url
+        } }
+      } }
+    } } }`;
+  const { stdout } = await execFileAsync(
+    'gh',
+    ['api', 'graphql', '-f', `query=${query}`, '-F', `owner=${owner}`, '-F', `repo=${repo}`, '-F', `number=${number}`],
+    { maxBuffer: 50 * 1024 * 1024, encoding: 'utf8' },
+  );
+  const resp = JSON.parse(stdout) as GHThreadsResponse;
+  const nodes = resp.data?.repository?.pullRequest?.reviewThreads?.nodes ?? [];
+  if (nodes.length >= 100) {
+    console.warn('[pr-review-assistant] reviewThreads hit the 100-thread page cap; some threads may be omitted.');
+  }
+  return mapReviewThreads(resp);
+}
+
 /**
  * Fetch all review activity on a PR: line-anchored comments, review summaries,
  * and PR-wide issue comments (where most bots post their reports).
@@ -93,26 +166,11 @@ export async function fetchPRReviewComments(
   number: number,
 ): Promise<PRComments> {
   const base = `repos/${owner}/${repo}`;
-  const [inlineRaw, reviewsRaw, issuesRaw] = await Promise.all([
-    ghApiJSON<GHInline[]>(`${base}/pulls/${number}/comments`),
+  const [threads, reviewsRaw, issuesRaw] = await Promise.all([
+    fetchReviewThreads(owner, repo, number),
     ghApiJSON<GHReview[]>(`${base}/pulls/${number}/reviews`),
     ghApiJSON<GHIssueComment[]>(`${base}/issues/${number}/comments`),
   ]);
-
-  const inline: InlineReviewComment[] = inlineRaw
-    // Filter out outdated/orphaned line comments (line === null AND original_line === null).
-    .filter((c) => (c.line ?? c.original_line) != null)
-    .map((c) => ({
-      id: String(c.id),
-      author: toAuthor(c.user),
-      body: c.body,
-      path: c.path,
-      line: (c.line ?? c.original_line) as number,
-      startLine: (c.start_line ?? c.original_start_line) ?? undefined,
-      side: c.side ?? 'RIGHT',
-      createdAt: c.created_at,
-      htmlUrl: c.html_url,
-    }));
 
   const prLevel: PRLevelComment[] = [];
 
@@ -142,10 +200,7 @@ export async function fetchPRReviewComments(
 
   // Sort PR-level newest first so the most recent reviewer activity is on top.
   prLevel.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  // Sort inline by file then line so the diff renders them in reading order.
-  inline.sort((a, b) =>
-    a.path === b.path ? a.line - b.line : a.path.localeCompare(b.path),
-  );
+  threads.sort((a, b) => (a.path === b.path ? a.line - b.line : a.path.localeCompare(b.path)));
 
-  return { inline, prLevel };
+  return { threads, prLevel };
 }
