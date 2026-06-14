@@ -22,7 +22,7 @@
     "@monaco-editor/react": "^4.6.0",
     "express": "^4.19.2",
     "mermaid": "^11.15.0",
-    "monaco-editor": "^0.50.0",
+    "monaco-editor": "^0.55.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "zustand": "^4.5.4"

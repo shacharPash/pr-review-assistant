@@ -370,6 +370,9 @@ export function DiffViewer({ file, position }: Props) {
             options={{
               ...editorOptions,
               renderSideBySide: viewMode === 'split',
+              // Syntax-highlight deleted lines in the unified view (added in
+              // monaco 0.51; only takes effect when renderSideBySide is false).
+              experimental: { useTrueInlineView: true },
               ignoreTrimWhitespace: false,
               hideUnchangedRegions: hasFull
                 ? {
