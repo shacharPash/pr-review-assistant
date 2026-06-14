@@ -89,11 +89,12 @@ export interface GHThreadNode {
 }
 export interface GHThreadsResponse {
   data: { repository: { pullRequest: { reviewThreads: { nodes: GHThreadNode[] } } } };
+  errors?: Array<{ message: string }>;
 }
 
 function authorFromGraphQL(a: GHThreadComment['author']): ReviewAuthor {
   if (!a) {
-    return { login: 'ghost', type: 'User', avatarUrl: '', htmlUrl: '', brand: null };
+    return { login: 'ghost', type: 'User', avatarUrl: '', htmlUrl: 'https://github.com/ghost', brand: null };
   }
   return toAuthor({ login: a.login, type: a.__typename, avatar_url: a.avatarUrl, html_url: a.url });
 }
@@ -148,10 +149,18 @@ async function fetchReviewThreads(owner: string, repo: string, number: number): 
     ['api', 'graphql', '-f', `query=${query}`, '-F', `owner=${owner}`, '-F', `repo=${repo}`, '-F', `number=${number}`],
     { maxBuffer: 50 * 1024 * 1024, encoding: 'utf8' },
   );
-  const resp = JSON.parse(stdout) as GHThreadsResponse;
+  const resp = JSON.parse(stdout.trim() || '{}') as GHThreadsResponse;
+  if (resp.errors?.length) {
+    console.warn(
+      `[pr-review-assistant] reviewThreads GraphQL returned errors: ${resp.errors.map((e) => e.message).join('; ')}`,
+    );
+  }
   const nodes = resp.data?.repository?.pullRequest?.reviewThreads?.nodes ?? [];
   if (nodes.length >= 100) {
     console.warn('[pr-review-assistant] reviewThreads hit the 100-thread page cap; some threads may be omitted.');
+  }
+  if (nodes.some((t) => (t.comments?.nodes?.length ?? 0) >= 100)) {
+    console.warn('[pr-review-assistant] a review thread hit the 100-comment cap; some replies may be omitted.');
   }
   return mapReviewThreads(resp);
 }

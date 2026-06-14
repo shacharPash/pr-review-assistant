@@ -56,4 +56,15 @@ describe('mapReviewThreads', () => {
     ] } } } } };
     expect(mapReviewThreads(empty)).toEqual([]);
   });
+
+  it('falls back to a ghost author when the comment author is null', () => {
+    const resp: GHThreadsResponse = { data: { repository: { pullRequest: { reviewThreads: { nodes: [
+      { id: 'T', isResolved: false, isOutdated: false, comments: { nodes: [
+        { databaseId: 9, author: null, body: 'x', path: 'p.ts', line: 1, originalLine: 1, startLine: null, originalStartLine: null, diffSide: 'RIGHT', createdAt: '2026-01-01T00:00:00Z', url: 'https://gh/c/9' },
+      ] } },
+    ] } } } } };
+    const t = mapReviewThreads(resp)[0];
+    expect(t.comments[0].author.login).toBe('ghost');
+    expect(t.comments[0].author.type).toBe('User');
+  });
 });
