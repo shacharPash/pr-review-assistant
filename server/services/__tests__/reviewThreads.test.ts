@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mapReviewThreads, type GHThreadsResponse } from '../../server/services/reviewCommentsFetcher.js';
+import { mapReviewThreads, type GHThreadsResponse } from '../reviewCommentsFetcher.js';
 
 const RESP: GHThreadsResponse = {
   data: { repository: { pullRequest: { reviewThreads: { nodes: [
