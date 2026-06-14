@@ -52,7 +52,9 @@ export function ReviewActivityPane() {
   }
 
   const prLevel = reviewComments?.prLevel ?? [];
-  const inline = reviewComments?.inline ?? [];
+  const threads = reviewComments?.threads ?? [];
+  const inline = threads.flatMap((t) => t.comments);
+  const resolvedCount = threads.filter((t) => t.isResolved).length;
 
   if (prLevel.length === 0 && inline.length === 0) {
     return (
@@ -92,10 +94,11 @@ export function ReviewActivityPane() {
           Hide review comments in diff
         </label>
       </div>
-      {inline.length > 0 && (
+      {threads.length > 0 && (
         <div className="rc-inline-summary">
           <div className="rc-inline-summary-title">
-            {inline.length} inline {inline.length === 1 ? 'comment' : 'comments'} on the diff
+            {threads.length} {threads.length === 1 ? 'thread' : 'threads'} on the diff
+            {resolvedCount > 0 ? ` · ${resolvedCount} resolved` : ''}
           </div>
           <div className="rc-inline-summary-list">
             {inlineSummary.map(([login, count]) => (
