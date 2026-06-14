@@ -73,6 +73,8 @@ interface State {
   reviewComments: PRComments | null;
   reviewCommentsStatus: 'idle' | 'loading' | 'ready' | 'error';
   reviewCommentsError?: string;
+  /** Per-thread pending/error state for reply & resolve, keyed by thread id. */
+  threadActions: Record<string, { status: 'idle' | 'pending' | 'error'; message?: string }>;
   /** Per-file, per-hunk context-line expansion ("↑ 10 more" / "↓ 10 more"). */
   hunkExpansions: Record<string, Record<number, HunkExpansion>>;
   /** GitHub Actions check status for the current PR. */
@@ -103,6 +105,8 @@ interface State {
   fetchHealth: (force?: boolean) => Promise<void>;
   selectScope: (scope: SelectedScope) => Promise<void>;
   fetchReviewComments: () => Promise<void>;
+  replyToThread: (threadId: string, inReplyTo: string, body: string) => Promise<void>;
+  setThreadResolved: (threadId: string, resolved: boolean) => Promise<void>;
   /** Expand context lines around a hunk by N lines, in the given direction. */
   expandHunk: (path: string, hunkIdx: number, direction: 'above' | 'below', amount: number) => void;
   /** Reset a single hunk's expansion to 0/0. */
@@ -403,6 +407,7 @@ export const useStore = create<State>((set, get) => ({
   lastReviewedSha: null,
   reviewComments: null,
   reviewCommentsStatus: 'idle',
+  threadActions: {},
   hunkExpansions: {},
   health: { status: 'idle', ok: true, dependencies: [] },
   checks: { status: 'idle', runs: [] },
@@ -431,6 +436,7 @@ export const useStore = create<State>((set, get) => ({
       reviewComments: null,
       reviewCommentsStatus: 'idle',
       reviewCommentsError: undefined,
+      threadActions: {},
       hunkExpansions: {},
       checks: { status: 'idle', runs: [] },
       tokenUsage: EMPTY_USAGE,
@@ -598,6 +604,60 @@ export const useStore = create<State>((set, get) => ({
         reviewCommentsStatus: 'error',
         reviewCommentsError: (err as Error).message,
       });
+    }
+  },
+
+  async replyToThread(threadId, inReplyTo, body) {
+    const { bundle } = get();
+    if (!bundle) return;
+    set((s) => ({ threadActions: { ...s.threadActions, [threadId]: { status: 'pending' } } }));
+    try {
+      const res = await fetch('/api/pr/review-comments/reply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          owner: bundle.meta.owner, repo: bundle.meta.repo,
+          number: bundle.meta.number, headSha: bundle.meta.headSha,
+          inReplyTo, body,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error ?? 'Reply failed.');
+      set((s) => ({
+        reviewComments: data.comments as PRComments,
+        threadActions: { ...s.threadActions, [threadId]: { status: 'idle' } },
+      }));
+    } catch (err) {
+      set((s) => ({
+        threadActions: { ...s.threadActions, [threadId]: { status: 'error', message: (err as Error).message } },
+      }));
+    }
+  },
+
+  async setThreadResolved(threadId, resolved) {
+    const { bundle } = get();
+    if (!bundle) return;
+    set((s) => ({ threadActions: { ...s.threadActions, [threadId]: { status: 'pending' } } }));
+    try {
+      const res = await fetch('/api/pr/review-comments/resolve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          owner: bundle.meta.owner, repo: bundle.meta.repo,
+          number: bundle.meta.number, headSha: bundle.meta.headSha,
+          threadId, resolved,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error ?? 'Resolve failed.');
+      set((s) => ({
+        reviewComments: data.comments as PRComments,
+        threadActions: { ...s.threadActions, [threadId]: { status: 'idle' } },
+      }));
+    } catch (err) {
+      set((s) => ({
+        threadActions: { ...s.threadActions, [threadId]: { status: 'error', message: (err as Error).message } },
+      }));
     }
   },
 
