@@ -12,6 +12,8 @@
     "build": "tsc -b && vite build",
     "serve": "npm run build && NODE_ENV=production node --env-file-if-exists=.env dist/server/index.js",
     "make-launcher": "bash bin/make-launcher.sh",
+    "autostart-on": "bash bin/autostart.sh on",
+    "autostart-off": "bash bin/autostart.sh off",
     "preview": "NODE_ENV=production node --env-file-if-exists=.env dist/server/index.js",
     "typecheck": "tsc -b --noEmit",
     "test": "vitest run"

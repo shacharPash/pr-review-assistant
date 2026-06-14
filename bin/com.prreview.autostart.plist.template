@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.prreview.autostart</string>
+  <!--
+    Only job: at login, `open` the launcher .command so Terminal starts the
+    server in the user's interactive session (where org-managed Claude can
+    refresh its login). We deliberately do NOT run node directly here — that's
+    what made the old background agent fail Claude auth.
+  -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/open</string>
+    <string>__LAUNCHER__</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+</dict>
+</plist>
