@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import { fetchPRReviewComments } from '../services/reviewCommentsFetcher.js';
-import { getBundle, getReviewComments, setReviewComments, clearReviewComments } from '../services/cache.js';
-import { postReply, setResolved } from '../services/reviewCommentsWriter.js';
+import { getBundle, getReviewComments, setReviewComments } from '../services/cache.js';
+import { postReply, setResolved, isValidInReplyTo, isValidThreadId } from '../services/reviewCommentsWriter.js';
 
 export const reviewCommentsRouter = Router();
 
@@ -48,11 +48,13 @@ async function refetchAndCache(owner: string, repo: string, number: number, head
 
 reviewCommentsRouter.post('/api/pr/review-comments/reply', async (req: Request, res: Response) => {
   const { owner, repo, number, headSha, inReplyTo, body } = req.body ?? {};
-  if (!owner || !repo || !number || !headSha || !inReplyTo || !body?.trim()) {
+  if (!owner || !repo || !number || !headSha || !inReplyTo || typeof body !== 'string' || !body.trim()) {
     return res.status(400).json({ ok: false, error: 'Missing required fields.' });
   }
+  if (!isValidInReplyTo(String(inReplyTo))) {
+    return res.status(400).json({ ok: false, error: 'Invalid reply target.' });
+  }
   try {
-    clearReviewComments(owner, repo, Number(number), headSha);
     await postReply(owner, repo, Number(number), String(inReplyTo), String(body));
     const fresh = await refetchAndCache(owner, repo, Number(number), headSha);
     res.json({ ok: true, comments: fresh });
@@ -67,8 +69,10 @@ reviewCommentsRouter.post('/api/pr/review-comments/resolve', async (req: Request
   if (!owner || !repo || !number || !headSha || !threadId || typeof resolved !== 'boolean') {
     return res.status(400).json({ ok: false, error: 'Missing required fields.' });
   }
+  if (!isValidThreadId(String(threadId))) {
+    return res.status(400).json({ ok: false, error: 'Invalid thread id.' });
+  }
   try {
-    clearReviewComments(owner, repo, Number(number), headSha);
     await setResolved(String(threadId), resolved);
     const fresh = await refetchAndCache(owner, repo, Number(number), headSha);
     res.json({ ok: true, comments: fresh });

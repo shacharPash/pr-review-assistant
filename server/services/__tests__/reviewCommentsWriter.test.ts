@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { replyArgs, resolveArgs } from '../reviewCommentsWriter.js';
+import { replyArgs, resolveArgs, isValidInReplyTo, isValidThreadId } from '../reviewCommentsWriter.js';
 
 describe('replyArgs', () => {
   it('builds gh REST args for a threaded reply', () => {
@@ -20,5 +20,18 @@ describe('resolveArgs', () => {
   });
   it('uses unresolveReviewThread when unresolving', () => {
     expect(resolveArgs('THREAD_x', false).join(' ')).toContain('unresolveReviewThread');
+  });
+});
+
+describe('input validation', () => {
+  it('accepts numeric reply ids; rejects @file and junk', () => {
+    expect(isValidInReplyTo('101')).toBe(true);
+    expect(isValidInReplyTo('@/etc/passwd')).toBe(false);
+    expect(isValidInReplyTo('1a')).toBe(false);
+  });
+  it('accepts graphql node ids; rejects @file and placeholders', () => {
+    expect(isValidThreadId('PRRT_kwDOABC123-=')).toBe(true);
+    expect(isValidThreadId('@/etc/passwd')).toBe(false);
+    expect(isValidThreadId('{owner}')).toBe(false);
   });
 });

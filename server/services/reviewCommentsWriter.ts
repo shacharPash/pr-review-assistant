@@ -3,6 +3,15 @@ import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
 
+/** GitHub REST comment ids are positive integers. */
+export function isValidInReplyTo(id: string): boolean {
+  return /^\d+$/.test(id);
+}
+/** GraphQL node ids are url-safe base64-ish (letters, digits, _ - =). */
+export function isValidThreadId(id: string): boolean {
+  return /^[A-Za-z0-9_=-]+$/.test(id);
+}
+
 /** Pure: gh args to post a threaded reply via REST in_reply_to. */
 export function replyArgs(
   owner: string, repo: string, number: number, inReplyTo: string, body: string,

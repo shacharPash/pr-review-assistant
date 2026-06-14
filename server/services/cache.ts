@@ -170,11 +170,3 @@ export function setReviewComments(
   if (!existing) return;
   store.set(k, { ...existing, reviewComments: comments });
 }
-
-export function clearReviewComments(
-  owner: string, repo: string, number: number, headSha: string,
-): void {
-  const k = key(owner, repo, number, headSha);
-  const existing = store.get(k);
-  if (existing) store.set(k, { ...existing, reviewComments: undefined });
-}
