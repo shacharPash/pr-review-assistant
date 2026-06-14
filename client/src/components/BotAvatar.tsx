@@ -1,4 +1,5 @@
 import type { ReviewAuthor } from '@shared/reviewComments';
+import { brandLogo } from '../lib/botLogos.js';
 
 /**
  * Renders a small avatar for the comment author. For bots we recognize, we
@@ -18,11 +19,21 @@ export function BotAvatar({ author, size = 18 }: { author: ReviewAuthor; size?: 
       />
     );
   }
-  // Bots: branded dot with a letter. Real avatars from GitHub are often
-  // generic and don't add information; branded chips communicate "this is
-  // Cursor BugBot" / "this is SonarCloud" faster.
-  const letter = (author.brand?.[0] ?? 'B').toUpperCase();
   const label = author.login.replace(/\[bot\]$/, '');
+  const logo = brandLogo(author.brand);
+  if (logo) {
+    return (
+      <span className={`rc-avatar bot logo brand-${author.brand}`} style={{ width: size, height: size }} title={label} aria-label={label}>
+        <img src={logo} width={size} height={size} alt={label} loading="lazy" />
+      </span>
+    );
+  }
+  if (author.avatarUrl) {
+    return (
+      <img className="rc-avatar bot" src={author.avatarUrl} width={size} height={size} alt={label} title={label} loading="lazy" />
+    );
+  }
+  const letter = (author.brand?.[0] ?? 'B').toUpperCase();
   return (
     <span
       className={`rc-avatar bot brand-${author.brand ?? 'none'}`}

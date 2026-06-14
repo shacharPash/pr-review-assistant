@@ -43,6 +43,23 @@ export interface InlineReviewComment {
 }
 
 /**
+ * A line-anchored review *thread* (one or more comments on the same spot),
+ * from GitHub's GraphQL reviewThreads. Carries resolution/outdated state and
+ * the node id needed to resolve/unresolve.
+ */
+export interface ReviewThread {
+  id: string;            // GraphQL node id — resolve/unresolve target
+  isResolved: boolean;
+  isOutdated: boolean;
+  path: string;
+  line: number;          // current line, or original line when outdated
+  startLine?: number;
+  side: 'LEFT' | 'RIGHT';
+  replyToId: string;     // databaseId (string) of the root comment — REST in_reply_to
+  comments: InlineReviewComment[];  // [0] is the root
+}
+
+/**
  * PR-level comments — either Reviews with a body (Approved/Changes Requested
  * summaries) or issue comments (bot PR-wide reports like SonarCloud quality
  * gates, Jit scans).
@@ -59,7 +76,7 @@ export interface PRLevelComment {
 }
 
 export interface PRComments {
-  inline: InlineReviewComment[];
+  threads: ReviewThread[];
   prLevel: PRLevelComment[];
 }
 

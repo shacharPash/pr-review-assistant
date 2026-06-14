@@ -24,8 +24,8 @@ export function FileSidebar() {
   // files already have comments from others.
   const reviewerCountByFile = useMemo(() => {
     const m = new Map<string, number>();
-    for (const c of reviewComments?.inline ?? []) {
-      m.set(c.path, (m.get(c.path) ?? 0) + 1);
+    for (const t of reviewComments?.threads ?? []) {
+      m.set(t.path, (m.get(t.path) ?? 0) + t.comments.length);
     }
     return m;
   }, [reviewComments]);

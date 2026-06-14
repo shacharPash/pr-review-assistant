@@ -3472,3 +3472,32 @@ button { font: inherit; }
   text-underline-offset: 2px;
 }
 .link-btn:hover { color: #58a6ff; }
+
+/* ===== Review thread badges / logos / reply / resolve (added with threads) ===== */
+.rc-avatar.bot.logo { display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 5px; overflow: hidden; background: #fff; }
+.rc-avatar.bot.logo img { object-fit: contain; display: block; }
+
+.rc-badge { font-size: 10px; font-weight: 600; line-height: 1; padding: 2px 6px;
+  border-radius: 999px; margin-left: 6px; }
+.rc-badge.outdated { color: #9a6700; background: #fff8c5; border: 1px solid #d4a72c55; }
+.rc-badge.resolved { color: #1a7f37; background: #dafbe1; border: 1px solid #1a7f3755; }
+.rc-card.resolved { opacity: 0.85; }
+.rc-count { font-size: 10px; color: var(--rc-muted, #768390); margin-left: 6px; }
+
+.rc-comment + .rc-comment { border-top: 1px solid var(--rc-border, #30363d); margin-top: 6px; padding-top: 6px; }
+.rc-comment-head { display: flex; align-items: center; gap: 6px; font-size: 12px; margin-bottom: 2px; }
+
+.rc-thread-actions { margin-top: 8px; }
+.rc-resolve-btn { font-size: 12px; padding: 3px 10px; border-radius: 6px;
+  border: 1px solid var(--rc-border, #30363d); background: transparent; color: inherit; cursor: pointer; }
+.rc-resolve-btn:hover:not(:disabled) { background: var(--rc-hover, #ffffff14); }
+.rc-resolve-btn:disabled { opacity: 0.5; cursor: default; }
+
+.rc-reply { display: flex; gap: 6px; margin-top: 8px; align-items: flex-end; }
+.rc-reply-input { flex: 1; resize: vertical; font: inherit; font-size: 12px; padding: 6px 8px;
+  border-radius: 6px; border: 1px solid var(--rc-border, #30363d); background: var(--rc-input-bg, #0d1117); color: inherit; }
+.rc-reply-btn { font-size: 12px; padding: 6px 12px; border-radius: 6px; border: none;
+  background: #238636; color: #fff; cursor: pointer; }
+.rc-reply-btn:disabled { opacity: 0.5; cursor: default; }
+.rc-action-error { color: #f85149; font-size: 12px; margin-top: 6px; }

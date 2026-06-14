@@ -26,7 +26,9 @@ export function DiffViewer({ file, position }: Props) {
   const blameWidth = usePrefs((s) => s.blameWidth);
   const setBlameWidth = usePrefs((s) => s.setBlameWidth);
   const reviewComments = useStore((s) => s.reviewComments);
-  const reviewerCountOnFile = reviewComments?.inline.filter((c) => c.path === file?.path).length ?? 0;
+  const reviewerCountOnFile = (reviewComments?.threads ?? [])
+    .filter((t) => t.path === file?.path)
+    .reduce((n, t) => n + t.comments.length, 0);
   const expansions = useStore((s) => (file ? s.hunkExpansions[file.path] : undefined)) ?? {};
   const expandHunk = useStore((s) => s.expandHunk);
   const [commentEditor, setCommentEditor] = useState<MonacoEditor.ICodeEditor | null>(null);

@@ -4,7 +4,7 @@ import type { editor as MonacoEditor } from 'monaco-editor';
 import { useStore } from '../state/store.js';
 import { usePrefs } from '../state/preferences.js';
 import { BotAvatar } from './BotAvatar.js';
-import type { InlineReviewComment } from '@shared/reviewComments';
+import type { InlineReviewComment, ReviewThread } from '@shared/reviewComments';
 
 interface Props {
   /** The modified-side editor (same one InlineCommentsLayer attaches to). */
@@ -17,7 +17,7 @@ interface Props {
 interface Zone {
   id: string;
   node: HTMLDivElement;
-  comments: InlineReviewComment[];
+  threads: ReviewThread[];
   line: number; // monaco line where the zone sits
 }
 
@@ -35,14 +35,14 @@ const MIN_ZONE_HEIGHT = 48;
 export function ReviewCommentsLayer({ editor, filePath, newLineMap }: Props) {
   const reviewComments = useStore((s) => s.reviewComments);
   const hideAll = usePrefs((s) => s.hideReviewerComments);
+  const threadActions = useStore((s) => s.threadActions);
+  const replyToThread = useStore((s) => s.replyToThread);
+  const setThreadResolved = useStore((s) => s.setThreadResolved);
   const [zones, setZones] = useState<Zone[]>([]);
-  // Per-comment collapse state, keyed by comment id. Defaults to expanded.
+  // Per-thread collapse state, keyed by thread id. Defaults to expanded.
   // Lives in component state (not preferences) so it resets per file open —
   // intentional: collapse is a "while I'm reading this" affordance.
   const [collapsedById, setCollapsedById] = useState<Record<string, boolean>>({});
-
-  const toggleCollapsed = (id: string) =>
-    setCollapsedById((c) => ({ ...c, [id]: !c[id] }));
 
   // Same Monaco-line <-> real-line translation as InlineCommentsLayer.
   const realToMonaco = (realLine: number): number => {
@@ -57,25 +57,25 @@ export function ReviewCommentsLayer({ editor, filePath, newLineMap }: Props) {
 
   useEffect(() => {
     if (!editor || hideAll) return;
-    const inline = reviewComments?.inline ?? [];
+    const allThreads = reviewComments?.threads ?? [];
 
-    // Group comments by REAL line for this file. We only render comments on
+    // Group threads by REAL line for this file. We only render threads on
     // the RIGHT side here — LEFT-side comments would need the old-content
     // editor and aren't visible in the modified pane anyway.
-    const groups = new Map<number, InlineReviewComment[]>();
-    for (const c of inline) {
-      if (c.path !== filePath) continue;
-      if (c.side === 'LEFT') continue;
-      const arr = groups.get(c.line) ?? [];
-      arr.push(c);
-      groups.set(c.line, arr);
+    const groups = new Map<number, ReviewThread[]>();
+    for (const t of allThreads) {
+      if (t.path !== filePath) continue;
+      if (t.side === 'LEFT') continue;
+      const arr = groups.get(t.line) ?? [];
+      arr.push(t);
+      groups.set(t.line, arr);
     }
 
     const newZones: Zone[] = [];
     const stop = (e: Event) => { e.stopPropagation(); };
 
     editor.changeViewZones((accessor) => {
-      for (const [realLine, comments] of groups) {
+      for (const [realLine, threads] of groups) {
         const monacoLine = realToMonaco(realLine);
         const node = document.createElement('div');
         node.className = 'pra-view-zone review';
@@ -91,7 +91,7 @@ export function ReviewCommentsLayer({ editor, filePath, newLineMap }: Props) {
           heightInPx: MIN_ZONE_HEIGHT,
           domNode: node,
         });
-        newZones.push({ id, node, comments, line: monacoLine });
+        newZones.push({ id, node, threads, line: monacoLine });
       }
     });
     zonesRef.current = newZones;
@@ -132,12 +132,21 @@ export function ReviewCommentsLayer({ editor, filePath, newLineMap }: Props) {
         createPortal(
           <ZoneSizer onHeight={(h) => setZoneHeight(i, h)}>
             <div className="rc-thread">
-              {z.comments.map((c) => (
-                <ReviewCommentCard
-                  key={c.id}
-                  comment={c}
-                  collapsed={!!collapsedById[c.id]}
-                  onToggle={() => toggleCollapsed(c.id)}
+              {z.threads.map((t) => (
+                <ReviewThreadCard
+                  key={t.id}
+                  thread={t}
+                  collapsed={collapsedById[t.id] ?? (t.isResolved || t.isOutdated)}
+                  onToggle={() => {
+                    // Invert the EFFECTIVE state (resolved/outdated default to
+                    // collapsed) so the first click always works — otherwise
+                    // toggling an undefined entry re-sets the same value.
+                    const effective = collapsedById[t.id] ?? (t.isResolved || t.isOutdated);
+                    setCollapsedById((c) => ({ ...c, [t.id]: !effective }));
+                  }}
+                  action={threadActions[t.id] ?? { status: 'idle' }}
+                  onReply={(body) => replyToThread(t.id, t.replyToId, body)}
+                  onResolve={() => setThreadResolved(t.id, !t.isResolved)}
                 />
               ))}
             </div>
@@ -175,61 +184,95 @@ function ZoneSizer({
   return <div ref={ref}>{children}</div>;
 }
 
-function ReviewCommentCard({
-  comment,
+function ReviewThreadCard({
+  thread,
   collapsed,
   onToggle,
+  action,
+  onReply,
+  onResolve,
 }: {
-  comment: InlineReviewComment;
+  thread: ReviewThread;
   collapsed: boolean;
   onToggle: () => void;
+  action: { status: 'idle' | 'pending' | 'error'; message?: string };
+  onReply: (body: string) => void;
+  onResolve: () => void;
 }) {
-  const a = comment.author;
-  const when = formatRelative(comment.createdAt);
-  // When collapsed, show a one-line preview next to the header so the reader
-  // still sees what the comment is about without expanding.
-  const preview = comment.body
+  const [replyText, setReplyText] = useState('');
+  const root = thread.comments[0];
+  if (!root) return null; // defensive: a thread should always have a root comment
+  const a = root.author;
+  const pending = action.status === 'pending';
+  const headLabel = a.login.replace(/\[bot\]$/, '');
+  const preview = root.body
     .replace(/<!--[\s\S]*?-->/g, '')
     .replace(/[#*`>_-]+/g, '')
     .trim()
     .split('\n')[0]
     .slice(0, 80);
+
+  function submitReply() {
+    const body = replyText.trim();
+    if (!body || pending) return;
+    onReply(body);
+    setReplyText('');
+  }
+
   return (
-    <div
-      className={`rc-card brand-${a.brand ?? 'none'} ${a.type === 'Bot' ? 'is-bot' : ''} ${
-        collapsed ? 'collapsed' : ''
-      }`}
-    >
+    <div className={`rc-card brand-${a.brand ?? 'none'} ${a.type === 'Bot' ? 'is-bot' : ''} ${collapsed ? 'collapsed' : ''} ${thread.isResolved ? 'resolved' : ''}`}>
       <div className="rc-head">
-        <button
-          type="button"
-          className="rc-fold"
-          onClick={onToggle}
-          title={collapsed ? 'Expand' : 'Collapse'}
-          aria-label={collapsed ? 'Expand comment' : 'Collapse comment'}
-        >
+        <button type="button" className="rc-fold" onClick={onToggle} title={collapsed ? 'Expand' : 'Collapse'} aria-label={collapsed ? 'Expand thread' : 'Collapse thread'}>
           {collapsed ? '▸' : '▾'}
         </button>
         <BotAvatar author={a} />
-        <span className="rc-name">{a.login.replace(/\[bot\]$/, '')}</span>
+        <span className="rc-name">{headLabel}</span>
         {a.type === 'Bot' && <span className="rc-bot-tag">bot</span>}
+        {thread.isOutdated && <span className="rc-badge outdated">Outdated</span>}
+        {thread.isResolved && <span className="rc-badge resolved">Resolved</span>}
+        {thread.comments.length > 1 && <span className="rc-count">{thread.comments.length}</span>}
         {collapsed && preview && <span className="rc-preview">{preview}</span>}
-        <span className="rc-when">{when}</span>
-        <a
-          className="rc-open"
-          href={comment.htmlUrl}
-          target="_blank"
-          rel="noreferrer"
-          title="Open in GitHub"
-        >
-          ↗
-        </a>
+        <span className="rc-when">{formatRelative(root.createdAt)}</span>
+        <a className="rc-open" href={root.htmlUrl} target="_blank" rel="noreferrer" title="Open in GitHub">↗</a>
       </div>
+
       {!collapsed && (
-        <div
-          className="rc-body"
-          dangerouslySetInnerHTML={{ __html: renderMarkdownish(comment.body) }}
-        />
+        <>
+          {thread.comments.map((c) => (
+            <div key={c.id} className="rc-comment">
+              <div className="rc-comment-head">
+                <BotAvatar author={c.author} size={16} />
+                <span className="rc-name">{c.author.login.replace(/\[bot\]$/, '')}</span>
+                <span className="rc-when">{formatRelative(c.createdAt)}</span>
+              </div>
+              <div className="rc-body" dangerouslySetInnerHTML={{ __html: renderMarkdownish(c.body) }} />
+            </div>
+          ))}
+
+          <div className="rc-thread-actions">
+            <button type="button" className="rc-resolve-btn" onClick={onResolve} disabled={pending}>
+              {thread.isResolved ? 'Unresolve' : 'Resolve conversation'}
+            </button>
+          </div>
+
+          <div className="rc-reply">
+            <textarea
+              className="rc-reply-input"
+              placeholder="Reply…"
+              value={replyText}
+              onChange={(e) => setReplyText(e.target.value)}
+              disabled={pending}
+              rows={2}
+            />
+            <button type="button" className="rc-reply-btn" onClick={submitReply} disabled={pending || !replyText.trim()}>
+              {pending ? 'Posting…' : 'Reply'}
+            </button>
+          </div>
+
+          {action.status === 'error' && (
+            <div className="rc-action-error">⚠ {action.message ?? 'Action failed.'}</div>
+          )}
+        </>
       )}
     </div>
   );
