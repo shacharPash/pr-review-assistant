@@ -3501,3 +3501,7 @@ button { font: inherit; }
   background: #238636; color: #fff; cursor: pointer; }
 .rc-reply-btn:disabled { opacity: 0.5; cursor: default; }
 .rc-action-error { color: #f85149; font-size: 12px; margin-top: 6px; }
+
+/* Drop monaco's strikethrough on changed-line deletions; the red background
+   already marks deleted text (GitHub-style intra-line diff). */
+.monaco-editor .inline-deleted-text { text-decoration: none; }
