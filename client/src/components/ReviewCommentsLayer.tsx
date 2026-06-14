@@ -44,9 +44,6 @@ export function ReviewCommentsLayer({ editor, filePath, newLineMap }: Props) {
   // intentional: collapse is a "while I'm reading this" affordance.
   const [collapsedById, setCollapsedById] = useState<Record<string, boolean>>({});
 
-  const toggleCollapsed = (id: string) =>
-    setCollapsedById((c) => ({ ...c, [id]: !c[id] }));
-
   // Same Monaco-line <-> real-line translation as InlineCommentsLayer.
   const realToMonaco = (realLine: number): number => {
     if (!newLineMap?.length) return realLine;
@@ -140,7 +137,13 @@ export function ReviewCommentsLayer({ editor, filePath, newLineMap }: Props) {
                   key={t.id}
                   thread={t}
                   collapsed={collapsedById[t.id] ?? (t.isResolved || t.isOutdated)}
-                  onToggle={() => toggleCollapsed(t.id)}
+                  onToggle={() => {
+                    // Invert the EFFECTIVE state (resolved/outdated default to
+                    // collapsed) so the first click always works — otherwise
+                    // toggling an undefined entry re-sets the same value.
+                    const effective = collapsedById[t.id] ?? (t.isResolved || t.isOutdated);
+                    setCollapsedById((c) => ({ ...c, [t.id]: !effective }));
+                  }}
                   action={threadActions[t.id] ?? { status: 'idle' }}
                   onReply={(body) => replyToThread(t.id, t.replyToId, body)}
                   onResolve={() => setThreadResolved(t.id, !t.isResolved)}
@@ -198,6 +201,7 @@ function ReviewThreadCard({
 }) {
   const [replyText, setReplyText] = useState('');
   const root = thread.comments[0];
+  if (!root) return null; // defensive: a thread should always have a root comment
   const a = root.author;
   const pending = action.status === 'pending';
   const headLabel = a.login.replace(/\[bot\]$/, '');
