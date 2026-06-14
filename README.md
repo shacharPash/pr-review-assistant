@@ -34,6 +34,12 @@ git clone https://github.com/shacharPash/pr-review-assistant.git && cd pr-review
    into the Dock; from then on a double-click starts the server (no `cd`, no
    typing). Close the window to stop.
 
+   **Tip — never start it yourself:** after creating the launcher, run
+   `npm run autostart-on` once. It opens the launcher at every login (in
+   Terminal, so Claude auth still works), so the server is always up and the
+   extension just works. Disable with `npm run autostart-off`. A Terminal
+   window opens at login — minimize it and leave it running.
+
 2. **Load the extension** (one time): open `chrome://extensions`, enable
    **Developer mode**, click **Load unpacked**, and select the `extension/`
    folder. Click the 🧩 puzzle-piece and **pin** "PR Review Assistant".
