@@ -57,6 +57,10 @@ export class ClaudeRunner {
   private lastText = '';
   private aborted = false;
   private timer: NodeJS.Timeout | null = null;
+  /** Most recent usage seen on an `assistant` event. Used as a fallback when
+   *  the final `result` event doesn't carry its own top-level `usage` block
+   *  (varies by Claude CLI version / managed-org config). */
+  private lastUsage: TokenUsage | null = null;
 
   constructor(private readonly events: RunnerEvents) {}
 
@@ -144,6 +148,13 @@ export class ClaudeRunner {
       return;
     }
 
+    // Capture usage from assistant events regardless of text — it's the
+    // authoritative cumulative count and the result event may omit it.
+    if (event.type === 'assistant' && event.message?.usage) {
+      const u = normalizeClaudeUsage(event.message.usage);
+      if (u) this.lastUsage = u;
+    }
+
     if (event.type === 'assistant' && event.message?.content) {
       const text = extractText(event.message.content);
       if (text && text.length > this.lastText.length && text.startsWith(this.lastText)) {
@@ -164,7 +175,10 @@ export class ClaudeRunner {
       } else {
         this.lastText = final;
       }
-      const usage = normalizeClaudeUsage(event.usage);
+      // Prefer the result event's own usage; fall back to the last usage seen
+      // on an assistant event so the token badge still populates on CLI
+      // versions whose result event omits the top-level usage block.
+      const usage = normalizeClaudeUsage(event.usage) ?? this.lastUsage;
       if (usage && this.events.onUsage) {
         this.events.onUsage(usage);
       }
@@ -199,7 +213,7 @@ export function normalizeClaudeUsage(raw: ClaudeUsage | undefined): TokenUsage |
 }
 interface ClaudeEvent {
   type: string;
-  message?: { content?: ClaudeContentBlock[] };
+  message?: { content?: ClaudeContentBlock[]; usage?: ClaudeUsage };
   result?: string;
   usage?: ClaudeUsage;
 }
