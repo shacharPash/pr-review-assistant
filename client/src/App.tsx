@@ -58,24 +58,27 @@ export function App() {
     <div className="app">
       <header className="header">
         <span className="brand">
-          <span className="dot" />
-          PR Review Assistant
+          <img className="brand-logo" src="/favicon.png" alt="" aria-hidden="true" />
+          <span className="brand-text">
+            <span className="brand-name">PR Review Assistant</span>
+            <span className="brand-sub">understand the change before you read it</span>
+          </span>
         </span>
         {bundle && <PRInput />}
-        {bundle && (
-          <div className="header-meta">
-            <span className="pr-num">#{bundle.meta.number}</span>
-            <PRStatusBadge />
-            <a href={bundle.meta.url} target="_blank" rel="noreferrer">
-              {bundle.meta.title}
-            </a>
-            <AuthorChip />
-            <ChecksBadge />
-            <JiraBadge />
-          </div>
-        )}
         <HeaderControls />
       </header>
+      {bundle && (
+        <div className="meta-strip">
+          <span className="pr-num">#{bundle.meta.number}</span>
+          <PRStatusBadge />
+          <a className="meta-title" href={bundle.meta.url} target="_blank" rel="noreferrer">
+            {bundle.meta.title}
+          </a>
+          <AuthorChip />
+          <ChecksBadge />
+          <JiraBadge />
+        </div>
+      )}
       <HealthBanner />
       <PRView />
     </div>
