@@ -92,10 +92,16 @@ loader.init().then((monaco) => {
       'editorIndentGuide.activeBackground': '#3a3f46',
       'editorGutter.background': '#07090c',
 
-      'diffEditor.insertedLineBackground': '#9bb95530',
-      'diffEditor.insertedTextBackground': '#9bb95550',
-      'diffEditor.removedLineBackground': '#e54a4a30',
-      'diffEditor.removedTextBackground': '#e54a4a50',
+      // Inserted bg uses a clean green (not VS Code's default olive #9bb955)
+      // at a light wash. The olive clashed with the yellow method tokens
+      // (#dcdcaa), pale-green numbers (#b5cea8) and green comments (#6a9955),
+      // making added code hard to read — worst on all-added files. Token
+      // foregrounds below stay authentic VS Code Dark+; only the diff wash
+      // changed.
+      'diffEditor.insertedLineBackground': '#3fb95020',
+      'diffEditor.insertedTextBackground': '#3fb95038',
+      'diffEditor.removedLineBackground': '#f8514920',
+      'diffEditor.removedTextBackground': '#f8514938',
       'diffEditor.diagonalFill': '#07090c',
       'diffEditor.border': '#2a3038',
       'diffEditor.unchangedRegionBackground': '#11141a',
