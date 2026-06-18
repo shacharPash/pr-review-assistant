@@ -12,19 +12,31 @@
  * whole UI feels darker / less foggy. Surface levels keep proportional
  * lift to maintain visual hierarchy. */
 body {
-  --bg: #07090c;
-  --bg-elev: #11141a;
-  --bg-card: #181c23;
-  --bg-card-hover: #1e232b;
-  --border: #2a3038;
-  --border-strong: #404853;
+  --bg: #0a0c10;
+  --bg-elev: #0f1218;
+  --bg-card: #14181f;
+  /* one extra surface level between card and hover, for nested chrome */
+  --bg-card-2: #1a1f28;
+  --bg-card-hover: #20262f;
+  --border: #232a33;
+  --border-strong: #36404c;
 
-  --fg: #e6edf3;
-  --fg-dim: #8b949e;
-  --fg-faint: #6e7681;
+  --fg: #e8eef5;
+  --fg-dim: #9aa6b2;
+  --fg-faint: #69727d;
 
-  --accent: #2f81f7;
-  --accent-soft: rgba(47, 129, 247, 0.15);
+  --accent: #3b8cff;
+  --accent-soft: rgba(59, 140, 255, 0.14);
+  /* a brighter accent edge for focus rings / active borders */
+  --accent-line: rgba(59, 140, 255, 0.45);
+
+  /* radius + elevation scale — used app-wide so cards/controls feel cohesive */
+  --r-sm: 7px;
+  --r-md: 10px;
+  --r-lg: 14px;
+  /* soft top highlight (inset) + ambient drop shadow = "real card" depth */
+  --shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 6px 20px -8px rgba(0, 0, 0, 0.6);
+  --shadow-sm: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 2px 8px -4px rgba(0, 0, 0, 0.5);
 
   --added: #3fb950;
   --added-soft: rgba(63, 185, 80, 0.15);
@@ -46,7 +58,13 @@ body {
 html, body, #root { height: 100%; margin: 0; }
 html, body { overflow: hidden; }  /* page never scrolls — internal containers do */
 body {
-  background: var(--bg);
+  /* two faint corner glows give the near-black canvas a premium sense of
+     depth without reading as noise. They sit behind all chrome. */
+  background:
+    radial-gradient(1200px 600px at 80% -10%, rgba(59, 140, 255, 0.06), transparent 60%),
+    radial-gradient(900px 520px at -5% 105%, rgba(163, 113, 247, 0.05), transparent 55%),
+    var(--bg);
+  background-attachment: fixed;
   color: var(--fg);
   font-size: 14px;
   line-height: 1.5;
@@ -133,49 +151,72 @@ button { font: inherit; }
   line-height: 1.5;
 }
 
+/* Top bar: brand · PR-URL field · controls. Kept calm and roomy so it reads
+   as chrome, not as another dense data row. */
 .header {
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 0 20px;
-  height: 52px;
+  gap: 18px;
+  padding: 0 18px;
+  height: 56px;
   flex-shrink: 0;
   border-bottom: 1px solid var(--border);
-  background: var(--bg-elev);
+  background: linear-gradient(180deg, var(--bg-elev), rgba(15, 18, 24, 0.55));
 }
 .brand {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--fg);
+  gap: 11px;
+  min-width: 0;
   white-space: nowrap;
 }
-.brand .dot {
-  width: 8px; height: 8px; border-radius: 50%;
-  background: var(--accent);
-  box-shadow: 0 0 8px var(--accent);
+.brand-logo {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  box-shadow: var(--shadow-sm);
 }
-.header-meta {
+.brand-text { display: flex; flex-direction: column; line-height: 1.2; }
+.brand-name {
+  font-size: 14px;
+  font-weight: 650;
+  letter-spacing: 0.2px;
+  color: var(--fg);
+}
+.brand-sub {
+  font-size: 11px;
+  color: var(--fg-faint);
+  margin-top: 1px;
+}
+@media (max-width: 1100px) { .brand-sub { display: none; } }
+
+/* Second bar: the dense PR facts (number, status, title, author, checks, Jira).
+   Quieter background so it sits below the top bar in the hierarchy. */
+.meta-strip {
   display: flex;
   align-items: center;
   gap: 10px;
+  padding: 0 18px;
+  height: 42px;
+  flex-shrink: 0;
+  min-width: 0;
   color: var(--fg-dim);
   font-size: 13px;
-  min-width: 0;
-  flex: 1;
+  background: var(--bg-elev);
+  border-bottom: 1px solid var(--border);
 }
-.header-meta a {
+.meta-title {
   color: var(--fg);
   text-decoration: none;
+  font-weight: 550;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  min-width: 0;
 }
-.header-meta a:hover { color: var(--accent); }
-.header-meta .pr-num {
-  color: var(--fg-dim);
+.meta-title:hover { color: var(--accent); }
+.meta-strip .pr-num {
+  color: var(--fg-faint);
   font-variant-numeric: tabular-nums;
   font-family: var(--mono);
   font-size: 12px;
@@ -579,28 +620,36 @@ button { font: inherit; }
   gap: 10px;
   align-items: center;
 }
+/* Shared segmented control — a padded track with a raised "pill" for the
+   active option. Used by AI mode, the Insights tabs, and the diff view modes
+   so every toggle in the app looks like the same designed component. */
 .segmented {
   display: inline-flex;
+  align-items: center;
+  gap: 2px;
   border: 1px solid var(--border);
-  border-radius: 6px;
-  overflow: hidden;
-  background: var(--bg-card);
+  border-radius: 9px;
+  padding: 3px;
+  background: var(--bg);
 }
 .segmented .seg {
   background: transparent;
   color: var(--fg-dim);
   border: none;
-  padding: 5px 10px;
+  padding: 5px 11px;
+  border-radius: 6px;
   font-size: 12px;
+  font-weight: 550;
+  line-height: 1.4;
   cursor: pointer;
-  transition: background 0.1s, color 0.1s;
+  transition: background 0.12s, color 0.12s;
 }
 .segmented .seg:hover { color: var(--fg); }
 .segmented .seg.active {
-  background: var(--accent-soft);
-  color: var(--accent);
+  background: var(--bg-card-hover);
+  color: var(--fg);
+  box-shadow: var(--shadow-sm);
 }
-.segmented .seg + .seg { border-left: 1px solid var(--border); }
 
 /* ---------- Token usage badge (header) ---------- */
 .token-badge {
@@ -635,8 +684,7 @@ button { font: inherit; }
 .summary-card {
   background:
     linear-gradient(135deg, var(--accent-soft) 0%, transparent 60%),
-    var(--bg-elev);
-  border-bottom: 1px solid var(--border);
+    var(--bg-card);
   padding: 0 0 12px;
   position: relative;
 }
@@ -1071,8 +1119,8 @@ button { font: inherit; }
   width: 22px;
   height: 22px;
   border-radius: 5px;
-  background: var(--bg-card);
-  border: 1px solid var(--border);
+  background: var(--bg-card-2);
+  border: 1px solid var(--border-strong);
   color: var(--fg-dim);
   font-family: var(--mono);
   font-size: 11px;
@@ -1643,28 +1691,35 @@ button { font: inherit; }
 /* Conspicuous CTA to expand the review footer. Color shifts with the
  * likely review action: green when no comments (ready to approve),
  * blue when commenting, red when likely requesting changes. */
+/* Calm, tinted CTA — a colored status bar rather than a loud saturated
+   slab. The tone still signals the likely action (blue=comment,
+   green=approve, red=changes) but no longer fights the dark UI. */
 .review-cta {
   display: flex;
   align-items: center;
   gap: 10px;
   width: 100%;
   padding: 12px 16px;
-  color: white;
   border: none;
   border-top: 1px solid var(--border);
   cursor: pointer;
-  font-size: 14px;
+  font-size: 13.5px;
   font-weight: 600;
-  transition: filter 0.1s, transform 0.06s;
-  background: linear-gradient(135deg, var(--accent) 0%, #1f6feb 100%);
+  transition: background 0.12s, transform 0.06s;
+  background: var(--accent-soft);
+  color: #7fb4ff;
 }
+.review-cta:hover { background: color-mix(in srgb, var(--accent) 22%, transparent); }
 .review-cta.tone-approve {
-  background: linear-gradient(135deg, var(--added) 0%, #2ea043 100%);
+  background: var(--added-soft);
+  color: #7ee08a;
 }
+.review-cta.tone-approve:hover { background: rgba(63, 185, 80, 0.2); }
 .review-cta.tone-changes {
-  background: linear-gradient(135deg, #b15a2e 0%, #d97757 100%);
+  background: var(--removed-soft);
+  color: #f3a3a8;
 }
-.review-cta:hover { filter: brightness(1.08); }
+.review-cta.tone-changes:hover { background: rgba(248, 81, 73, 0.2); }
 .review-cta:active { transform: translateY(1px); }
 .review-cta-emoji { font-size: 18px; }
 .review-cta-text { flex: 1; text-align: left; }
@@ -2256,37 +2311,41 @@ button { font: inherit; }
   display: flex;
   gap: 8px;
   flex: 1;
-  max-width: 600px;
+  max-width: 560px;
 }
 .input-row input {
   flex: 1;
   background: var(--bg-card);
   color: var(--fg);
   border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 7px 12px;
+  border-radius: var(--r-md);
+  padding: 0 13px;
+  height: 36px;
   font-size: 13px;
   outline: none;
-  transition: border-color 0.15s, background 0.15s;
+  box-shadow: var(--shadow-sm);
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
 .input-row input::placeholder { color: var(--fg-faint); }
 .input-row input:focus {
-  border-color: var(--accent);
-  background: var(--bg);
+  border-color: var(--accent-line);
+  box-shadow: 0 0 0 3px var(--accent-soft);
 }
 .input-row button {
-  background: var(--accent);
-  color: white;
-  border: 1px solid var(--accent);
-  border-radius: 6px;
-  padding: 7px 18px;
+  background: linear-gradient(180deg, #4a95ff, #2f80f5);
+  color: #fff;
+  border: 1px solid #2f80f5;
+  border-radius: var(--r-sm);
+  padding: 0 18px;
+  height: 36px;
   cursor: pointer;
-  font-size: 13px;
-  font-weight: 500;
-  transition: background 0.15s;
+  font-size: 12.5px;
+  font-weight: 600;
+  box-shadow: 0 2px 10px -3px rgba(59, 140, 255, 0.55);
+  transition: filter 0.15s;
 }
-.input-row button:hover:not(:disabled) { background: #1f6feb; }
-.input-row button:disabled { opacity: 0.5; cursor: default; }
+.input-row button:hover:not(:disabled) { filter: brightness(1.08); }
+.input-row button:disabled { opacity: 0.5; cursor: default; box-shadow: none; }
 
 /* ---------- Empty / error states ---------- */
 
@@ -2322,36 +2381,106 @@ button { font: inherit; }
 /* ---------- Landing hero (no PR loaded) ---------- */
 
 .landing {
+  position: relative;
   display: grid;
   place-items: center;
   min-height: 100%;
-  padding: 48px 24px 64px;
-  /* Subtle radial wash so the page doesn't feel flat. Cheap, no asset cost. */
-  background:
-    radial-gradient(900px 500px at 50% -10%, rgba(47, 129, 247, 0.12), transparent 60%),
-    radial-gradient(700px 400px at 50% 110%, rgba(47, 129, 247, 0.05), transparent 60%);
+  padding: 40px 24px 56px;
+  overflow: hidden;
 }
-.landing-card {
+
+/* ----- Animated backdrop: drifting aurora blobs + a masked grid ----- */
+.landing-bg {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  overflow: hidden;
+}
+.landing-aurora {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(70px);
+  opacity: 0.5;
+  will-change: transform;
+}
+.landing-aurora.a1 {
+  width: 620px; height: 620px;
+  left: -8%; top: -22%;
+  background: radial-gradient(circle, rgba(59, 140, 255, 0.5), transparent 62%);
+  animation: aurora1 22s ease-in-out infinite;
+}
+.landing-aurora.a2 {
+  width: 540px; height: 540px;
+  right: -6%; top: 4%;
+  background: radial-gradient(circle, rgba(163, 113, 247, 0.42), transparent 62%);
+  animation: aurora2 27s ease-in-out infinite;
+}
+.landing-aurora.a3 {
+  width: 700px; height: 700px;
+  left: 30%; bottom: -36%;
+  background: radial-gradient(circle, rgba(45, 110, 220, 0.32), transparent 60%);
+  animation: aurora3 32s ease-in-out infinite;
+}
+.landing-grid {
+  position: absolute;
+  inset: -1px;
+  background-image:
+    linear-gradient(to right, rgba(255, 255, 255, 0.04) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+  background-size: 46px 46px;
+  /* fade the grid out toward the edges so it reads as texture, not a table */
+  -webkit-mask-image: radial-gradient(900px 600px at 50% 38%, #000 0%, transparent 78%);
+  mask-image: radial-gradient(900px 600px at 50% 38%, #000 0%, transparent 78%);
+}
+@keyframes aurora1 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(60px, 40px) scale(1.12); }
+}
+@keyframes aurora2 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(-50px, 50px) scale(1.1); }
+}
+@keyframes aurora3 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(40px, -50px) scale(1.15); }
+}
+
+.landing-inner {
+  position: relative;
+  z-index: 1;
   width: 100%;
-  max-width: 640px;
+  max-width: 1060px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  text-align: center;
 }
+
+/* Two-column hero: pitch on the left, animated product preview on the right.
+   Collapses to a single centered column on narrow screens. */
+.landing-hero {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1.02fr 0.98fr;
+  gap: 44px;
+  align-items: center;
+}
+.landing-lead { text-align: left; min-width: 0; }
+
 .landing-eyebrow {
   display: inline-flex;
   align-items: center;
   gap: 8px;
   font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.12em;
+  font-weight: 700;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--fg-dim);
-  padding: 6px 12px;
+  padding: 6px 13px;
   border: 1px solid var(--border);
   border-radius: 999px;
-  background: var(--bg-card);
+  background: color-mix(in srgb, var(--bg-card) 70%, transparent);
+  backdrop-filter: blur(6px);
 }
 .landing-dot {
   width: 7px;
@@ -2359,45 +2488,59 @@ button { font: inherit; }
   border-radius: 50%;
   background: var(--accent);
   box-shadow: 0 0 10px var(--accent);
+  animation: dotPulse 2.4s ease-in-out infinite;
 }
+@keyframes dotPulse {
+  0%, 100% { box-shadow: 0 0 8px var(--accent); opacity: 1; }
+  50% { box-shadow: 0 0 16px var(--accent); opacity: 0.7; }
+}
+
 .landing-title {
-  font-size: 32px;
-  line-height: 1.15;
-  font-weight: 600;
+  font-size: 46px;
+  line-height: 1.08;
+  font-weight: 700;
   color: var(--fg);
-  letter-spacing: -0.015em;
-  margin: 20px 0 10px;
-  /* Soft gradient on the heading — adds polish without overdoing it. */
-  background: linear-gradient(180deg, var(--fg) 0%, color-mix(in srgb, var(--fg) 75%, transparent) 100%);
+  letter-spacing: -0.02em;
+  margin: 18px 0 14px;
+}
+/* The accent half of the headline gets an animated gradient sweep. */
+.landing-title-grad {
+  background: linear-gradient(100deg, #6fb0ff 0%, #a371f7 38%, #6fb0ff 76%, #a371f7 100%);
+  background-size: 220% 100%;
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
+  animation: titleShimmer 8s linear infinite;
+}
+@keyframes titleShimmer {
+  to { background-position: 220% 0; }
 }
 .landing-sub {
-  font-size: 15px;
-  line-height: 1.55;
+  font-size: 15.5px;
+  line-height: 1.6;
   color: var(--fg-dim);
-  margin: 0 0 28px;
-  max-width: 520px;
+  margin: 0 0 26px;
+  max-width: 480px;
 }
 .landing-form {
   width: 100%;
+  max-width: 520px;
   display: flex;
   gap: 8px;
   background: var(--bg-card);
   border: 1px solid var(--border-strong);
-  border-radius: 12px;
+  border-radius: 13px;
   padding: 8px;
   box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.02) inset,
-    0 18px 40px -20px rgba(0, 0, 0, 0.55);
-  transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+    0 1px 0 rgba(255, 255, 255, 0.03) inset,
+    0 18px 44px -22px rgba(0, 0, 0, 0.6);
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
 .landing-form:focus-within {
-  border-color: var(--accent);
+  border-color: var(--accent-line);
   box-shadow:
-    0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent),
-    0 18px 40px -20px rgba(0, 0, 0, 0.55);
+    0 0 0 4px var(--accent-soft),
+    0 18px 44px -22px rgba(0, 0, 0, 0.6);
 }
 .landing-input {
   flex: 1;
@@ -2411,29 +2554,28 @@ button { font: inherit; }
 }
 .landing-input::placeholder {
   color: var(--fg-faint);
-  font-size: 14px;
+  font-size: 13.5px;
 }
 .landing-submit {
-  background: var(--accent);
-  color: white;
-  border: 1px solid var(--accent);
-  border-radius: 8px;
+  background: linear-gradient(180deg, #4a95ff, #2f80f5);
+  color: #fff;
+  border: 1px solid #2f80f5;
+  border-radius: 9px;
   padding: 10px 22px;
   cursor: pointer;
   font-size: 14px;
   font-weight: 600;
   letter-spacing: 0.01em;
-  transition: background 0.12s, transform 0.06s;
+  box-shadow: 0 2px 12px -3px rgba(59, 140, 255, 0.6);
+  transition: filter 0.12s, transform 0.06s;
   white-space: nowrap;
 }
-.landing-submit:hover:not(:disabled) {
-  background: #1f6feb;
-}
+.landing-submit:hover:not(:disabled) { filter: brightness(1.08); }
 .landing-submit:active:not(:disabled) { transform: translateY(1px); }
-.landing-submit:disabled { opacity: 0.5; cursor: default; }
+.landing-submit:disabled { opacity: 0.5; cursor: default; box-shadow: none; }
 
 .landing-sample {
-  margin-top: 12px;
+  margin-top: 14px;
   background: transparent;
   border: none;
   color: var(--fg-faint);
@@ -2455,9 +2597,137 @@ button { font: inherit; }
 }
 .landing-sample:disabled { opacity: 0.5; cursor: default; }
 
+/* ----- Right column: animated product preview window ----- */
+.landing-show { min-width: 0; }
+@keyframes floatY {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-7px); }
+}
+.lp-win {
+  /* gentle float so the showpiece feels alive (entrance lives on the parent) */
+  animation: floatY 7s ease-in-out infinite;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-lg);
+  background:
+    linear-gradient(180deg, rgba(59, 140, 255, 0.06), transparent 120px),
+    var(--bg-card);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.04) inset,
+    0 30px 70px -28px rgba(0, 0, 0, 0.75);
+  overflow: hidden;
+}
+.lp-winbar {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elev);
+}
+.lp-traffic { width: 11px; height: 11px; border-radius: 50%; flex: 0 0 auto; }
+.lp-traffic.r { background: #ec6a5e; }
+.lp-traffic.y { background: #f4bf4f; }
+.lp-traffic.g { background: #61c454; }
+.lp-win-title {
+  margin-left: 8px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--fg-dim);
+}
+.lp-win-status {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 600;
+  color: #56d364;
+}
+.lp-body { padding: 16px; }
+.lp-tldr {
+  padding: 12px 13px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--r-sm);
+  background: linear-gradient(135deg, var(--accent-soft) 0%, transparent 70%), var(--bg-card-2);
+  margin-bottom: 14px;
+}
+.lp-tldr-label {
+  display: block;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 6px;
+}
+.lp-typed {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: #dbe4ee;
+}
+.lp-typed code {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--ident);
+  background: rgba(227, 168, 87, 0.1);
+  padding: 1px 5px;
+  border-radius: 5px;
+}
+/* blinking caret after the TL;DR, implying a live stream */
+.lp-typed::after {
+  content: '';
+  display: inline-block;
+  width: 7px;
+  height: 1.05em;
+  margin-left: 3px;
+  vertical-align: text-bottom;
+  background: var(--accent);
+  border-radius: 1px;
+  animation: caretBlink 1.05s step-end infinite;
+}
+@keyframes caretBlink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+
+.lp-diff {
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.75;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+}
+.lp-line {
+  display: flex;
+  gap: 10px;
+  padding: 0 10px;
+  white-space: pre;
+  /* each line slides + fades in on its own delay (set inline) */
+  opacity: 0;
+  animation: lineIn 0.5s ease both;
+}
+.lp-no { width: 22px; text-align: right; color: var(--fg-faint); flex: 0 0 auto; user-select: none; }
+.lp-code { color: #cdd6e0; }
+.lp-line.add { background: var(--added-soft); }
+.lp-line.add .lp-no { color: #56d364; }
+.lp-line.add .lp-code { color: #9fe6ab; }
+.lp-line.del { background: var(--removed-soft); }
+.lp-line.del .lp-no { color: #f0626a; }
+.lp-line.del .lp-code { color: #f3a9ad; }
+@keyframes lineIn {
+  from { opacity: 0; transform: translateX(-8px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+.lp-noise {
+  margin-top: 10px;
+  font-size: 11px;
+  color: var(--fg-faint);
+  text-align: center;
+  opacity: 0;
+  animation: fadeUp 0.6s ease both;
+}
+
+/* ----- Feature cards ----- */
 .landing-features {
   list-style: none;
-  margin: 36px 0 0;
+  margin: 48px 0 0;
   padding: 0;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -2466,44 +2736,52 @@ button { font: inherit; }
 }
 .landing-features li {
   display: flex;
-  gap: 10px;
+  gap: 12px;
   align-items: flex-start;
   text-align: left;
-  padding: 14px;
-  background: var(--bg-card);
+  padding: 16px;
+  background: color-mix(in srgb, var(--bg-card) 80%, transparent);
   border: 1px solid var(--border);
-  border-radius: 10px;
-  transition: border-color 0.12s, background 0.12s, transform 0.12s;
+  border-radius: var(--r-md);
+  backdrop-filter: blur(6px);
+  transition: border-color 0.15s, background 0.15s, transform 0.15s, box-shadow 0.15s;
 }
 .landing-features li:hover {
-  border-color: var(--border-strong);
-  background: var(--bg-card-hover, var(--bg-card));
-  transform: translateY(-1px);
+  border-color: var(--accent-line);
+  background: var(--bg-card);
+  transform: translateY(-3px);
+  box-shadow: 0 14px 30px -16px rgba(0, 0, 0, 0.7);
 }
 .landing-feature-icon {
-  font-size: 16px;
-  line-height: 1;
-  color: var(--accent);
-  margin-top: 1px;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  font-size: 15px;
+  color: #cfe1ff;
+  background: linear-gradient(135deg, var(--accent-soft), rgba(163, 113, 247, 0.12));
+  border: 1px solid var(--border);
   flex-shrink: 0;
 }
 .landing-features strong {
   display: block;
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 13.5px;
+  font-weight: 650;
   color: var(--fg);
   margin-bottom: 3px;
 }
 .landing-features span {
   display: block;
   font-size: 12px;
-  line-height: 1.45;
+  line-height: 1.5;
   color: var(--fg-dim);
 }
 .landing-foot {
-  margin-top: 28px;
+  margin-top: 30px;
   font-size: 12px;
   color: var(--fg-faint);
+  text-align: center;
 }
 .landing-foot code {
   font-family: var(--mono);
@@ -2514,9 +2792,39 @@ button { font: inherit; }
   font-size: 11.5px;
 }
 
+/* Staggered entrance — elements carry an inline animation-delay. */
+.reveal {
+  opacity: 0;
+  animation: fadeUp 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (max-width: 900px) {
+  .landing-hero { grid-template-columns: 1fr; gap: 32px; }
+  .landing-lead { text-align: center; align-items: center; display: flex; flex-direction: column; }
+  .landing-sub { margin-left: auto; margin-right: auto; }
+  .landing-show { display: none; }
+}
 @media (max-width: 640px) {
-  .landing-title { font-size: 24px; }
+  .landing-title { font-size: 32px; }
   .landing-features { grid-template-columns: 1fr; }
+}
+
+/* Respect users who prefer less motion: kill the looping/entrance animations
+   but keep everything visible and usable. */
+@media (prefers-reduced-motion: reduce) {
+  .landing-aurora,
+  .landing-show,
+  .lp-win,
+  .landing-dot,
+  .landing-title-grad,
+  .lp-typed::after { animation: none; }
+  .reveal,
+  .lp-line,
+  .lp-noise { animation: none; opacity: 1; transform: none; }
 }
 
 .error-card {
@@ -2591,10 +2899,21 @@ button { font: inherit; }
   overflow-y: auto;
   display: flex;
   flex-direction: column;
+  padding: 12px 12px 4px;
 }
 /* Sections keep their natural height and never compress — the rail scrolls
-   instead, and any section can collapse to just its header. */
-.rail-scroll > .rail-section { flex-shrink: 0; }
+   instead, and any section can collapse to just its header. Each section is
+   now a raised card (radius + soft shadow + hairline border) so Summary,
+   Insights and Files read as distinct surfaces lifting off the rail. */
+.rail-scroll > .rail-section {
+  flex-shrink: 0;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  margin-bottom: 12px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
 
 /* Shared collapsible section header (Summary / Insights / Files). */
 .rail-section-head {
@@ -2615,7 +2934,7 @@ button { font: inherit; }
   text-align: left;
   transition: color 0.1s, background 0.1s;
 }
-.rail-section-head:hover { color: var(--fg); background: var(--bg-card); }
+.rail-section-head:hover { color: var(--fg); background: var(--bg-card-hover); }
 .rail-section.is-collapsed .rail-section-head { border-bottom-color: var(--border); }
 .rail-chev {
   color: var(--fg-faint);
@@ -2635,13 +2954,20 @@ button { font: inherit; }
 .tldr {
   display: flex;
   flex-direction: column;
-  border-bottom: 1px solid var(--border);
-  background: linear-gradient(180deg, var(--accent-soft) 0%, transparent 100%);
+  background:
+    linear-gradient(180deg, var(--accent-soft) 0%, transparent 92px),
+    var(--bg-card);
 }
+/* Insights tabs use the same segmented-pill language as the AI-mode and
+   view-mode toggles: a padded track with a raised pill for the active tab. */
 .tldr-tabs {
   display: flex;
   gap: 2px;
-  padding: 10px 10px 0;
+  margin: 10px 10px 2px;
+  padding: 3px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 9px;
   overflow-x: auto;
   scrollbar-width: none;
 }
@@ -2650,22 +2976,22 @@ button { font: inherit; }
   background: transparent;
   border: none;
   color: var(--fg-dim);
-  padding: 6px 10px;
+  padding: 5px 9px;
   font-size: 12px;
+  font-weight: 550;
   cursor: pointer;
-  border-radius: 6px 6px 0 0;
+  border-radius: 6px;
   display: flex;
   align-items: center;
   gap: 5px;
   white-space: nowrap;
-  border-bottom: 2px solid transparent;
-  transition: color 0.1s, background 0.1s, border-color 0.1s;
+  transition: color 0.12s, background 0.12s;
 }
-.tldr-tab:hover { color: var(--fg); background: var(--bg-card); }
+.tldr-tab:hover { color: var(--fg); }
 .tldr-tab.active {
-  color: var(--accent);
-  border-bottom-color: var(--accent);
-  background: var(--bg-card);
+  color: var(--fg);
+  background: var(--bg-card-hover);
+  box-shadow: var(--shadow-sm);
 }
 .tldr-tab .emoji { font-size: 13px; }
 .tldr-tab .tab-emoji { font-size: 14px; line-height: 1; }
@@ -3168,10 +3494,11 @@ button { font: inherit; }
   border: 1px solid transparent;
   transition: background 0.1s, border-color 0.1s;
 }
-.file-card:hover { background: var(--bg-card); }
+.file-card:hover { background: var(--bg-card-2); }
 .file-card.active {
   background: var(--accent-soft);
-  border-color: rgba(47, 129, 247, 0.4);
+  border-color: var(--accent-line);
+  box-shadow: inset 2px 0 0 var(--accent);
 }
 .file-card .order {
   width: 22px; height: 22px;
@@ -3242,9 +3569,9 @@ button { font: inherit; }
 .noise-toggle {
   margin: 8px;
   padding: 8px 12px;
-  background: var(--bg-card);
-  border: 1px dashed var(--border);
-  border-radius: 6px;
+  background: var(--bg-card-2);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--r-sm);
   color: var(--fg-dim);
   cursor: pointer;
   font-size: 12px;
