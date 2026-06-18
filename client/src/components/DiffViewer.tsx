@@ -100,24 +100,46 @@ export function DiffViewer({ file, position }: Props) {
     const m = (window as { monaco?: typeof import('monaco-editor') }).monaco;
     if (!m) return;
 
-    if (!(blameVisible && blameReady) || !blameEntry) {
+    const model = commentEditor.getModel();
+    if (!(blameVisible && blameReady) || !blameEntry || !model) {
       decorationsRef.current = commentEditor.deltaDecorations(decorationsRef.current, []);
       return;
     }
-    const decos = blameEntry.ranges.map((r) => ({
-      range: new m.Range(r.startingLine, 1, r.endingLine, 1),
-      options: {
-        lineNumberClassName: ageBucketClass(r.authoredDate),
-        isWholeLine: true,
-      },
-    }));
+
+    // Tint each gutter row by the age of the commit on its REAL file line.
+    // Decorations must be keyed by Monaco ROW, not by the real file line: in
+    // hunks-only mode the model is compressed (Monaco row ≠ file line), so we
+    // map every row through `toRealLine` — exactly the mapping the gutter date
+    // text uses. Using real line numbers as Monaco ranges (the old behavior)
+    // painted the age color onto the wrong rows: e.g. a line edited today
+    // showed today's date but not the fresh-green tint, and the displaced row
+    // looked untinted/"white" next to its neighbors.
+    const toRealLine = hasFull
+      ? (n: number) => n
+      : (n: number) => newLineMap[n - 1] ?? 0;
+    const ranges = blameEntry.ranges;
+    const lineCount = model.getLineCount();
+    const decos: Parameters<typeof commentEditor.deltaDecorations>[1] = [];
+    for (let n = 1; n <= lineCount; n++) {
+      const realLine = toRealLine(n);
+      if (realLine === 0) continue; // separator row between hidden hunks
+      const r = ranges.find((x) => realLine >= x.startingLine && realLine <= x.endingLine);
+      if (!r) continue;
+      decos.push({
+        range: new m.Range(n, 1, n, 1),
+        options: {
+          lineNumberClassName: ageBucketClass(r.authoredDate),
+          isWholeLine: true,
+        },
+      });
+    }
     decorationsRef.current = commentEditor.deltaDecorations(decorationsRef.current, decos);
     return () => {
       if (commentEditor && !commentEditor.getModel()?.isDisposed?.()) {
         decorationsRef.current = commentEditor.deltaDecorations(decorationsRef.current, []);
       }
     };
-  }, [commentEditor, blameVisible, blameReady, blameEntry]);
+  }, [commentEditor, blameVisible, blameReady, blameEntry, hasFull, newLineMap]);
 
   // Effect-based line-numbers control: combines (hunks-only line map) +
   // (optional blame annotation). Recomputes whenever any input changes.
