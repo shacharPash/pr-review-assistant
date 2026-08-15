@@ -4,6 +4,8 @@ A localhost web app that helps you understand a GitHub pull request *fast* — a
 
 Runs entirely on your machine: your local `gh` CLI for GitHub, your local `claude` CLI for AI. **No API keys, no telemetry.** Your code only goes where your own `claude` CLI already sends it.
 
+The server binds to `127.0.0.1` and rejects non-local Host and Origin headers by default, because its API can invoke your authenticated local CLIs. Remote access is intentionally unsupported unless you explicitly set both `HOST` and `ALLOW_REMOTE_ACCESS=1` on a trusted network.
+
 ![PR Review Assistant reviewing a real PR](docs/screenshot.png)
 
 ---
