@@ -20,12 +20,15 @@ import { reviewCommentsRouter } from './routes/reviewComments.js';
 import { healthRouter } from './routes/health.js';
 import { checksRouter } from './routes/checks.js';
 import { checkHealth } from './services/healthCheck.js';
+import { isAllowedLocalRequest, resolveListenHost } from './security.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const ROOT = path.resolve(__dirname, '..');
 const PORT = Number(process.env.PORT ?? 5173);
 const isDev = process.env.NODE_ENV !== 'production';
+const allowRemoteAccess = process.env.ALLOW_REMOTE_ACCESS === '1';
+const listenHost = resolveListenHost(process.env);
 
 // SSE clients can disconnect mid-write; that surfaces here as EPIPE/ECONNRESET
 // on the response socket. Per-route handlers also guard, but this catches
@@ -40,6 +43,18 @@ process.on('uncaughtException', (err: NodeJS.ErrnoException) => {
 
 async function main() {
   const app = express();
+  app.disable('x-powered-by');
+  app.use((req, res, next) => {
+    if (!allowRemoteAccess && !isAllowedLocalRequest(req.get('host'), req.get('origin'))) {
+      return res.status(403).json({ error: 'PR Review Assistant only accepts local requests.' });
+    }
+    res.set({
+      'X-Content-Type-Options': 'nosniff',
+      'X-Frame-Options': 'DENY',
+      'Referrer-Policy': 'no-referrer',
+    });
+    next();
+  });
   app.use(express.json({ limit: '2mb' }));
   app.use(prRouter);
   app.use(tldrRouter);
@@ -85,9 +100,9 @@ async function main() {
     });
   }
 
-  app.listen(PORT, async () => {
+  app.listen(PORT, listenHost, async () => {
     const url = `http://localhost:${PORT}`;
-    console.log(`[pr-review-assistant] listening on ${url}`);
+    console.log(`[pr-review-assistant] listening on ${url} (${listenHost})`);
     // Surface missing-dep warnings in the terminal too — not just the UI
     // banner. Helps people who launched the server but didn't open the
     // browser yet (and didn't realize gh / claude were missing).
