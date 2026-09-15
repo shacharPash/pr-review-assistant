@@ -327,6 +327,7 @@ export function InlineCommentsLayer({ editor, filePath, newLineMap }: Props) {
               startLine={startLine}
               endLine={z.line}
               filePath={filePath}
+              initialBody={composerTarget?.prefill ?? ''}
               readOriginalLines={readOriginalLines}
               onCancel={closeComposer}
               onSave={(text, s, e) => {
@@ -363,6 +364,7 @@ function ComposerCore({
   onCancel, onSave, onDelete, isEdit = false,
 }: ComposerCoreProps) {
   const [draft, setDraft] = useState(initialBody);
+  const [aiError, setAIError] = useState<string | null>(null);
   const [busy, setBusy] = useState<null | 'suggest' | 'enhance'>(null);
   const [start, setStart] = useState(startLine);
   const [end, setEnd] = useState(endLine);
@@ -374,6 +376,7 @@ function ComposerCore({
   };
 
   const callAI = async (mode: 'suggest' | 'enhance') => {
+    setAIError(null);
     setBusy(mode);
     try {
       const original = readOriginalLines(start, end);
@@ -386,7 +389,7 @@ function ComposerCore({
       });
       if (!res.ok) {
         const err = (await res.json().catch(() => ({}))) as { error?: string };
-        setDraft((d) => d + `\n\n_AI ${mode} failed: ${err.error ?? 'unknown error'}_`);
+        setAIError(`AI ${mode} failed: ${err.error ?? 'unknown error'}`);
         return;
       }
       const data = (await res.json()) as {
@@ -402,7 +405,7 @@ function ComposerCore({
         setDraft(data.text.trim());
       }
     } catch (err) {
-      setDraft((d) => d + `\n\n_AI ${mode} failed: ${(err as Error).message}_`);
+      setAIError(`AI ${mode} failed: ${(err as Error).message}`);
     } finally {
       setBusy(null);
     }
@@ -438,6 +441,7 @@ function ComposerCore({
           autoFocus={!isEdit}
           rows={4}
         />
+        {aiError && <div className="tldr-error" role="alert">{aiError}</div>}
         <div className="vz-tools">
           <button
             type="button"
@@ -554,16 +558,18 @@ interface ComposerProps {
   startLine: number;
   endLine: number;
   filePath: string;
+  /** Seeds the draft — used when jumping in from an AI Review suggestion. */
+  initialBody?: string;
   readOriginalLines: (start: number, end: number) => string;
   onCancel: () => void;
   onSave: (text: string, startLine: number, endLine: number) => void;
 }
 
-function Composer(props: ComposerProps) {
+function Composer({ initialBody = '', ...props }: ComposerProps) {
   return (
     <ComposerCore
       {...props}
-      initialBody=""
+      initialBody={initialBody}
     />
   );
 }

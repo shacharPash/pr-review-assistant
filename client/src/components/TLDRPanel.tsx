@@ -1,37 +1,32 @@
 import { SafeInline } from '../lib/SafeMarkdown.js';
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { useStore } from '../state/store.js';
 import { usePrefs } from '../state/preferences.js';
 import { DiagramPanel } from './DiagramPanel.js';
 import { ReviewActivityPane } from './ReviewActivityPane.js';
+import { AIReviewPane } from './AIReviewPane.js';
+import { AskPane } from './AskPane.js';
+import { AIMark } from './AIMark.js';
 import { JiraIcon } from './JiraIcon.js';
 import { RailSectionHead } from './RailSectionHead.js';
 import type { PersonaId } from '@shared/personas';
 import { checklistSource } from '@shared/jira';
 
-type Kind = 'core' | 'risk' | 'note';
-interface Bullet { kind: Kind; text: string; }
+type TabId = 'ai-review' | 'ask' | PersonaId | 'activity';
 
-// Per-kind presentation for the Changes & Risks card stack.
-const KIND_TAG: Record<Kind, string> = {
-  core: 'Core change', risk: '⚠ Risk', note: 'Context',
-};
-
-type TabId = 'brief' | PersonaId | 'activity';
-
-// Plain English first — it streams faster than Key Points (which needs deeper
-// model reasoning to name specific files/risks) so the user gets readable
-// output sooner. The other tabs still pre-warm in the background.
-const TABS: { id: TabId; emoji: string; label: string }[] = [
+// Plain English first — it streams faster than the AI Review (which needs deep
+// model reasoning to find real issues) so the user gets readable output sooner.
+// The two AI-powered tabs (AI Review + Ask) sit together and are marked as a
+// pair (shared hex-node mark, gradient accent, hairline separators — see `ai`).
+const TABS: { id: TabId; emoji: string; label: string; ai?: boolean }[] = [
   { id: 'explain', emoji: '💬', label: 'Plain English' },
-  { id: 'brief', emoji: '🎯', label: 'Key Points' },
+  { id: 'ai-review', emoji: '🔎', label: 'AI Review', ai: true },
+  { id: 'ask', emoji: '💭', label: 'Ask', ai: true },
   { id: 'checklist', emoji: '✅', label: 'Checklist' },
   { id: 'activity', emoji: '🤖', label: 'Activity' },
 ];
 
 export function TLDRPanel() {
-  const tldr = useStore((s) => s.tldr);
-  const retry = useStore((s) => s.retryTLDR);
   const retryPersona = useStore((s) => s.retryPersona);
   const bundle = useStore((s) => s.bundle);
   const activeTab = useStore((s) => s.activeTab);
@@ -53,7 +48,6 @@ export function TLDRPanel() {
   }, [bundle?.meta?.headSha]);
 
   if (!bundle) return null;
-  if (tldr.status === 'idle') return null;
 
   if (collapsed) {
     return (
@@ -67,21 +61,34 @@ export function TLDRPanel() {
     <div className="tldr rail-section">
       <RailSectionHead title="💡 Insights" collapsed={false} onToggle={toggleTLDR} />
       <div className="tldr-tabs" role="tablist">
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            role="tab"
-            aria-selected={activeTab === t.id}
-            className={`tldr-tab ${activeTab === t.id ? 'active' : ''}`}
-            onClick={() => selectTab(t.id)}
-          >
-            <span className="tab-emoji">{t.emoji}</span>
-            <span>{t.label}</span>
-          </button>
-        ))}
+        {TABS.map((t, i) => {
+          // Hairline separators bracket the AI pair from the utility tabs.
+          const sepBefore = t.ai && !TABS[i - 1]?.ai;
+          const sepAfter = t.ai && !TABS[i + 1]?.ai;
+          return (
+            <Fragment key={t.id}>
+              {sepBefore && <span className="tab-sep" aria-hidden="true" />}
+              <button
+                role="tab"
+                aria-selected={activeTab === t.id}
+                className={`tldr-tab ${activeTab === t.id ? 'active' : ''} ${t.ai ? 'is-ai' : ''}`}
+                onClick={() => selectTab(t.id)}
+              >
+                {t.ai ? (
+                  <AIMark size={15} className="tab-ai-mark" />
+                ) : (
+                  <span className="tab-emoji">{t.emoji}</span>
+                )}
+                <span>{t.label}</span>
+              </button>
+              {sepAfter && <span className="tab-sep" aria-hidden="true" />}
+            </Fragment>
+          );
+        })}
       </div>
 
-      {activeTab === 'brief' && <BriefTab tldr={tldr} retry={retry} />}
+      {activeTab === 'ai-review' && <AIReviewPane />}
+      {activeTab === 'ask' && <AskPane />}
       {activeTab === 'explain' && (
         <PersonaPaneExplain
           result={personaResults.explain}
@@ -99,73 +106,6 @@ export function TLDRPanel() {
       <DiagramPanel />
     </div>
   );
-}
-
-function BriefTab({
-  tldr,
-  retry,
-}: {
-  tldr: ReturnType<typeof useStore.getState>['tldr'];
-  retry: () => void;
-}) {
-  const bullets = useMemo(
-    () => (tldr.status === 'done' ? parseBullets(tldr.text) : []),
-    [tldr.status, tldr.text],
-  );
-
-  if (tldr.status === 'error') {
-    return (
-      <div className="tldr-error">
-        {tldr.error || "Couldn't generate review notes."}
-        <button className="link-btn retry" onClick={retry}>Retry</button>
-      </div>
-    );
-  }
-  if (tldr.status === 'streaming') {
-    if (!tldr.text) {
-      return (
-        <div className="tldr-skeleton" aria-label="Generating brief">
-          <div className="skel-row" style={{ width: '88%' }} />
-          <div className="skel-row" style={{ width: '74%' }} />
-          <div className="skel-row" style={{ width: '92%' }} />
-          <div className="skel-row" style={{ width: '64%' }} />
-        </div>
-      );
-    }
-    return (
-      <div className="tldr-streaming-raw">
-        {tldr.text}
-        <span className="cursor" />
-      </div>
-    );
-  }
-  return (
-    <div className="tldr-body cards">
-      {bullets.map((b, i) => {
-        const ref = extractRef(b.text);
-        return (
-          <div key={i} className={`insight ${b.kind}`}>
-            <div className="insight-top">
-              <span className="insight-tag">{KIND_TAG[b.kind]}</span>
-              {ref && <span className="insight-ref">{ref}</span>}
-            </div>
-            <div className="insight-text"><SafeInline text={b.text} /></div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-/**
- * Pull a `file.ext:line` (or `file.ext:line-line`) reference out of a bullet so
- * it can be pinned as a chip in the card header — it's the payoff of this pane
- * (where to look), so it shouldn't stay buried in the prose. Returns the first
- * match; the text still renders in full below.
- */
-function extractRef(text: string): string | null {
-  const m = text.match(/\b([\w./-]+\.[A-Za-z]{1,5}:\d+(?:-\d+)?)\b/);
-  return m ? m[1] : null;
 }
 
 function PersonaPaneExplain({
@@ -199,7 +139,11 @@ function PersonaPaneExplain({
   return (
     <div className="persona-body explain">
       {paragraphs.map((p, i) => (
-        <p key={i} className="explain-paragraph"><SafeInline text={p} /></p>
+        <p
+          key={i}
+          className="explain-paragraph"
+          children={<SafeInline text={p} />}
+        />
       ))}
       {result.status === 'streaming' && <span className="cursor" />}
     </div>
@@ -249,7 +193,10 @@ function PersonaPaneChecklist({
             checked={!!checked[i]}
             onChange={(e) => setChecked((c) => ({ ...c, [i]: e.target.checked }))}
           />
-          <span className="check-text"><SafeInline text={item} /></span>
+          <span
+            className="check-text"
+            children={<SafeInline text={item} />}
+          />
         </label>
       ))}
       {result.status === 'streaming' && <span className="cursor" />}
@@ -284,56 +231,6 @@ function ChecklistSource({ source }: { source: ReturnType<typeof checklistSource
   );
 }
 
-// A bullet line begins when it opens with a CHANGE/RISK/CONTEXT tag (the
-// prompt's contract), with an optional leading "-"/"*"/"•" the model may still
-// add. Captures the tag and the remaining text.
-const TAGGED_LINE = /^(?:[-*•]\s*)?(CHANGE|RISK|CONTEXT)\b\s*[:.\-–]?\s*(.*)$/i;
-
-const TAG_KIND: Record<string, Kind> = { change: 'core', risk: 'risk', context: 'note' };
-
-function parseBullets(text: string): Bullet[] {
-  const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
-  const result: Bullet[] = [];
-  let current: string | null = null;
-  let currentKind: Kind | null = null;
-  const push = () => {
-    if (current == null) return;
-    const text = current.trim();
-    if (text) result.push({ kind: currentKind ?? classify(text), text });
-    current = null;
-    currentKind = null;
-  };
-  for (const line of lines) {
-    const tagged = line.match(TAGGED_LINE);
-    if (tagged) {
-      push();
-      currentKind = TAG_KIND[tagged[1].toLowerCase()];
-      current = tagged[2];
-    } else if (/^[-*•]\s+/.test(line)) {
-      // Legacy untagged bullet — fall back to keyword classification.
-      push();
-      current = line.replace(/^[-*•]\s+/, '');
-    } else if (current != null) {
-      current += ' ' + line;
-    } else {
-      current = line;
-    }
-  }
-  push();
-  return result.length > 0 ? result : [{ kind: 'note', text: text.trim() }];
-}
-
-// Fallback only — used when a bullet has no explicit CHANGE/RISK/CONTEXT tag
-// (older cached output, or a model that ignored the format). Scans the whole
-// bullet, not just the first 80 chars, so a leading file path doesn't crowd
-// out the signal word.
-function classify(text: string): Kind {
-  const lc = text.toLowerCase();
-  if (/\brisk\b|\brisky\b|concern|watch out|silently|race|deadlock|leak|gotcha|edge case|missing test|no test/.test(lc)) return 'risk';
-  if (/core (change|fix)|main change|\bfix(es|ed)?\b|\badds?\b|\bremoves?\b|\breplaces?\b|introduces?|now (composes|computes|returns|skips|uses)|moves? from/.test(lc)) return 'core';
-  return 'note';
-}
-
 function parseChecklistItems(text: string): string[] {
   const lines = text.split('\n');
   const out: string[] = [];
@@ -355,4 +252,11 @@ function parseChecklistItems(text: string): string[] {
   }
   push();
   return out;
+}
+
+/** Inline backticks + **bold** + auto-link of bare http URLs. */
+
+
+function escapeHTML(text: string): string {
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }

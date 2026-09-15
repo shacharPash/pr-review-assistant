@@ -40,6 +40,15 @@ export function DiffViewer({ file, position }: Props) {
     closeComposer();
   }, [file?.path, closeComposer]);
 
+  // AI Review "jump to suggestion": when the store holds a pending reveal for
+  // THIS file and the editor is mounted, scroll the line into view and open the
+  // composer pre-filled with the suggested comment. Runs here (not in the store
+  // action) so it fires after the target file's editor has mounted — see the
+  // note in `jumpToSuggestion`.
+  const pendingReveal = useStore((s) => s.pendingReveal);
+  const clearPendingReveal = useStore((s) => s.clearPendingReveal);
+  const openComposer = useStore((s) => s.openComposer);
+
   if (!file) {
     return (
       <div className="diff-pane">
@@ -280,6 +289,24 @@ export function DiffViewer({ file, position }: Props) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [commentEditor, hasFull, fullReady, file?.path, JSON.stringify(hunkBoundaries)]);
+
+  // Consume a pending AI-Review "jump to suggestion" once the editor for the
+  // target file is mounted: reveal the line and open the composer pre-filled.
+  useEffect(() => {
+    if (!pendingReveal || !commentEditor || !file) return;
+    if (pendingReveal.path !== file.path) return;
+    const model = commentEditor.getModel();
+    if (!model || model.isDisposed?.()) return;
+    // Real file line → Monaco row. Identity in full-file mode; via newLineMap
+    // otherwise. Fall back to the raw line if it isn't a mapped (changed) row.
+    const monacoLine = hasFull
+      ? pendingReveal.line
+      : newLineMap.indexOf(pendingReveal.line) + 1 || pendingReveal.line;
+    openComposer(file.path, pendingReveal.startLine, pendingReveal.line, pendingReveal.prefill);
+    commentEditor.revealLineInCenter(monacoLine);
+    clearPendingReveal();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingReveal, commentEditor, file?.path, hasFull, newLineMap]);
 
   return (
     <div className="diff-pane">

@@ -2,6 +2,8 @@ import { create } from 'zustand';
 import type { PRBundle, DiffFile, TLDR, BlameRange } from '@shared/types';
 import type { PersonaId } from '@shared/personas';
 import type { PRComments } from '@shared/reviewComments';
+import type { AIReviewComment } from '@shared/aiReview';
+import type { ChatMessage, AiChatEvent } from '@shared/aiChat';
 import type { CheckRun } from '@shared/checks';
 import { EMPTY_USAGE, addUsage, type TokenUsage } from '@shared/usage';
 import { usePrefs } from './preferences.js';
@@ -25,7 +27,14 @@ export interface LineComment {
   startLine?: number;
 }
 
-export type TLDRTab = 'brief' | PersonaId | 'activity';
+export type TLDRTab = 'ai-review' | 'ask' | PersonaId | 'activity';
+
+/** Multi-turn PR chat state (in-memory only; resets when a new PR loads). */
+export interface ChatState {
+  messages: ChatMessage[];
+  status: 'idle' | 'streaming' | 'error';
+  error?: string;
+}
 
 export type ScopeKind = 'all' | 'commit' | 'since-review';
 
@@ -42,7 +51,21 @@ interface State {
   loading: boolean;
   error: { message: string; detail?: string } | null;
   showNoise: boolean;
-  tldr: TLDR;
+  aiReview: TLDR;
+  /**
+   * Wall-clock start of the current AI Review run (epoch ms), or null when not
+   * streaming. Lives in the store — not local component state — so the elapsed
+   * timer keeps counting correctly across tab switches that unmount the pane.
+   */
+  aiReviewStartedAt: number | null;
+  /** In-memory PR chat (the "Ask" tab). Not persisted. */
+  chat: ChatState;
+  /**
+   * Whether the Ask chat scopes answers to the currently-open file (sent as
+   * `focus`). Sticky for the session, default on. Turn off to ask general
+   * questions about the whole PR.
+   */
+  chatUseFocus: boolean;
   headline: TLDR;
   diagram: TLDR;
   beforeAfter: TLDR;
@@ -58,8 +81,19 @@ interface State {
    * `startLine` is set when the comment covers a multi-line range.
    */
   lineComments: Record<string, Record<number, LineComment>>;
-  /** Currently-focused range for the inline composer; null when closed. */
-  composerTarget: { path: string; line: number; startLine: number } | null;
+  /**
+   * Currently-focused range for the inline composer; null when closed.
+   * `prefill` seeds the composer's draft (used when jumping in from an AI
+   * Review suggestion so the suggested text is already in the box).
+   */
+  composerTarget: { path: string; line: number; startLine: number; prefill?: string } | null;
+  /**
+   * A one-shot request to reveal a diff line and open the composer there,
+   * set by `jumpToSuggestion` and consumed by DiffViewer once the target
+   * file's editor is mounted. `nonce` lets repeat jumps to the same line
+   * re-fire. null when nothing is pending.
+   */
+  pendingReveal: { path: string; line: number; startLine: number; prefill: string; nonce: number } | null;
   reviewSummary: string;
   postingReview: { status: 'idle' | 'posting' | 'done' | 'error'; message?: string; url?: string };
   /** Active scope filter. 'all' = show full PR. */
@@ -113,8 +147,17 @@ interface State {
   resetHunkExpansion: (path: string, hunkIdx: number) => void;
   selectFile: (path: string) => void;
   toggleNoise: () => void;
-  startTLDR: () => void;
-  retryTLDR: () => void;
+  retryAIReview: () => void;
+  /** Ask a question in the PR chat; streams the answer into `chat`. */
+  askChat: (question: string) => Promise<void>;
+  /** Clear the PR chat conversation. */
+  resetChat: () => void;
+  /** Toggle whether the Ask chat scopes answers to the open file. */
+  toggleChatFocus: () => void;
+  /** Jump the diff to a suggested comment's line and open the composer pre-filled. */
+  jumpToSuggestion: (c: AIReviewComment) => void;
+  /** Clear a consumed pending-reveal request (called by DiffViewer). */
+  clearPendingReveal: () => void;
   fetchFullContent: (path: string) => Promise<void>;
   fetchBlame: (path: string) => Promise<void>;
   selectTab: (tab: TLDRTab) => void;
@@ -123,15 +166,20 @@ interface State {
   setComment: (path: string, body: string) => void;
   setLineComment: (path: string, line: number, body: string, startLine?: number) => void;
   removeLineComment: (path: string, line: number) => void;
-  openComposer: (path: string, startLine: number, endLine: number) => void;
+  openComposer: (path: string, startLine: number, endLine: number, prefill?: string) => void;
   closeComposer: () => void;
   setReviewSummary: (text: string) => void;
   postReview: (event: 'APPROVE' | 'REQUEST_CHANGES' | 'COMMENT') => Promise<void>;
 }
 
 const emptyTLDR: TLDR = { text: '', status: 'idle' };
+const emptyChat: ChatState = { messages: [], status: 'idle' };
 
-let tldrEventSource: EventSource | null = null;
+// PR chat streams over POST (fetch), so it uses an AbortController rather than
+// an EventSource. Kept at module scope so a new question / new PR aborts any
+// in-flight answer.
+let chatAbort: AbortController | null = null;
+let aiReviewEventSource: EventSource | null = null;
 let headlineEventSource: EventSource | null = null;
 let diagramEventSource: EventSource | null = null;
 let beforeAfterEventSource: EventSource | null = null;
@@ -335,20 +383,22 @@ function openHeadlineStream(bundle: PRBundle, set: StoreSetter) {
   });
 }
 
-function openTLDRStream(bundle: PRBundle, set: StoreSetter) {
-  if (tldrEventSource) {
-    tldrEventSource.close();
-    tldrEventSource = null;
+function openAIReviewStream(bundle: PRBundle, set: StoreSetter, refresh = false) {
+  if (aiReviewEventSource) {
+    aiReviewEventSource.close();
+    aiReviewEventSource = null;
   }
-  const url = `/api/tldr/stream?owner=${encodeURIComponent(bundle.meta.owner)}` +
+  const url = `/api/ai-review/stream?owner=${encodeURIComponent(bundle.meta.owner)}` +
     `&repo=${encodeURIComponent(bundle.meta.repo)}` +
     `&number=${bundle.meta.number}` +
     `&headSha=${bundle.meta.headSha}` +
-    modeParam();
+    modeParam() + (refresh ? '&refresh=1' : '');
   const es = new EventSource(url);
-  tldrEventSource = es;
-  set({ tldr: { text: '', status: 'streaming' } });
-  attachUsageListener(es, set);
+  aiReviewEventSource = es;
+  set({ aiReview: { text: '', status: 'streaming' }, aiReviewStartedAt: Date.now() });
+  const current = () => aiReviewEventSource === es;
+  const guardedSet: StoreSetter = (value) => { if (current()) set(value); };
+  attachUsageListener(es, guardedSet);
   let acc = '';
 
   const decode = (raw: string): string => {
@@ -356,21 +406,24 @@ function openTLDRStream(bundle: PRBundle, set: StoreSetter) {
   };
 
   es.addEventListener('chunk', (e: MessageEvent) => {
+    if (!current()) return;
     acc += decode(e.data);
-    set({ tldr: { text: acc, status: 'streaming' } });
+    set({ aiReview: { text: acc, status: 'streaming' } });
   });
   es.addEventListener('done', () => {
-    set({ tldr: { text: acc, status: 'done' } });
+    if (!current()) return;
+    set({ aiReview: { text: acc, status: 'done' } });
     es.close();
-    tldrEventSource = null;
+    aiReviewEventSource = null;
   });
   es.addEventListener('error', (e: MessageEvent) => {
+    if (!current()) return;
     // EventSource fires plain 'error' for network drops (no e.data). Custom
     // 'error' SSE events arrive here too with a decodable payload.
-    const msg = e?.data ? decode(e.data) : 'TL;DR stream failed.';
-    set({ tldr: { text: acc, status: 'error', error: msg } });
+    const msg = e?.data ? decode(e.data) : 'AI Review stream failed.';
+    set({ aiReview: { text: acc, status: 'error', error: msg } });
     es.close();
-    tldrEventSource = null;
+    aiReviewEventSource = null;
   });
 }
 
@@ -388,7 +441,10 @@ export const useStore = create<State>((set, get) => ({
   loading: false,
   error: null,
   showNoise: false,
-  tldr: emptyTLDR,
+  aiReview: emptyTLDR,
+  aiReviewStartedAt: null,
+  chat: emptyChat,
+  chatUseFocus: true,
   headline: emptyTLDR,
   diagram: emptyTLDR,
   beforeAfter: emptyTLDR,
@@ -399,6 +455,7 @@ export const useStore = create<State>((set, get) => ({
   comments: {},
   lineComments: {},
   composerTarget: null,
+  pendingReveal: null,
   reviewSummary: '',
   postingReview: { status: 'idle' },
   scope: { kind: 'all', label: 'All commits' },
@@ -414,10 +471,16 @@ export const useStore = create<State>((set, get) => ({
   tokenUsage: EMPTY_USAGE,
 
   async loadPR(ref) {
+    aiReviewEventSource?.close();
+    aiReviewEventSource = null;
+    chatAbort?.abort();
+    chatAbort = null;
     set({
       loading: true,
       error: null,
-      tldr: emptyTLDR,
+      aiReview: emptyTLDR,
+      aiReviewStartedAt: null,
+      chat: emptyChat,
       headline: emptyTLDR,
       diagram: emptyTLDR,
       beforeAfter: emptyTLDR,
@@ -429,6 +492,8 @@ export const useStore = create<State>((set, get) => ({
       postingReview: { status: 'idle' },
       personaResults: {},
       activeTab: 'explain',
+      composerTarget: null,
+      pendingReveal: null,
       scope: { kind: 'all', label: 'All commits' },
       scopedFiles: null,
       scopeLoading: false,
@@ -477,7 +542,9 @@ export const useStore = create<State>((set, get) => ({
         const shorthand = `${bundle.meta.owner}/${bundle.meta.repo}#${bundle.meta.number}`;
         window.history.replaceState(null, '', `/?pr=${encodeURIComponent(shorthand)}`);
       }
-      openTLDRStream(bundle, set);
+      // AI Review is heavy (deep bug-finding, minutes on large PRs), so it is
+      // NOT started on load — it streams lazily the first time the user opens
+      // the AI Review tab (see selectTab). Everything else pre-warms here.
       openHeadlineStream(bundle, set);
       openDiagramStream(bundle, set);
       openBeforeAfterStream(bundle, set);
@@ -763,14 +830,122 @@ export const useStore = create<State>((set, get) => ({
     set({ showNoise: !get().showNoise });
   },
 
-  startTLDR() {
+  retryAIReview() {
     const b = get().bundle;
-    if (b) openTLDRStream(b, set);
+    if (b) openAIReviewStream(b, set, true);
   },
 
-  retryTLDR() {
-    const b = get().bundle;
-    if (b) openTLDRStream(b, set);
+  async askChat(question) {
+    const q = question.trim();
+    const { bundle, chat } = get();
+    if (!bundle || !q || chat.status === 'streaming') return;
+
+    // Optimistically append the user's turn plus an empty assistant turn we
+    // stream deltas into. History sent to the server excludes that placeholder.
+    const messages: ChatMessage[] = [
+      ...chat.messages,
+      { role: 'user', content: q },
+      { role: 'assistant', content: '' },
+    ];
+    set({ chat: { messages, status: 'streaming' } });
+    const history = messages.slice(0, -1);
+    const focusPath = get().chatUseFocus ? get().activeFilePath : null;
+
+    chatAbort?.abort();
+    chatAbort = new AbortController();
+    const controller = chatAbort;
+    const { signal } = controller;
+    const current = () => chatAbort === controller && !signal.aborted && get().bundle === bundle;
+
+    const appendDelta = (delta: string): void => {
+      if (!current()) return;
+      set((s) => {
+        const msgs = s.chat.messages.slice();
+        const last = msgs[msgs.length - 1];
+        if (last && last.role === 'assistant') {
+          msgs[msgs.length - 1] = { ...last, content: last.content + delta };
+        }
+        return { chat: { ...s.chat, messages: msgs } };
+      });
+    };
+
+    try {
+      const res = await fetch('/api/ai-chat/stream', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal,
+        body: JSON.stringify({
+          owner: bundle.meta.owner,
+          repo: bundle.meta.repo,
+          number: bundle.meta.number,
+          headSha: bundle.meta.headSha,
+          messages: history,
+          focus: focusPath ? { path: focusPath } : undefined,
+          mode: usePrefs.getState().modelPreference,
+        }),
+      });
+      if (!res.ok || !res.body) {
+        const msg = await res
+          .json()
+          .then((d) => d.error as string | undefined)
+          .catch(() => undefined);
+        throw new Error(msg || `Chat request failed (${res.status}).`);
+      }
+
+      if (!current()) { await res.body.cancel(); return; }
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+      let completed = false;
+      const processLine = (line: string) => {
+        if (!line.trim()) return;
+        const evt = JSON.parse(line) as AiChatEvent;
+        if (evt.type === 'chunk' && typeof evt.delta === 'string') appendDelta(evt.delta);
+        else if (evt.type === 'usage') get().recordUsage(evt.usage);
+        else if (evt.type === 'error') throw new Error(evt.message);
+        else if (evt.type === 'done') completed = true;
+        else throw new Error('Chat returned an invalid stream event.');
+      };
+      try {
+        for (;;) {
+          const { value, done } = await reader.read();
+          if (!current()) { await reader.cancel(); return; }
+          if (done) { buf += decoder.decode(); break; }
+          buf += decoder.decode(value, { stream: true });
+          const lines = buf.split('\n');
+          buf = lines.pop() ?? '';
+          for (const line of lines) processLine(line);
+        }
+        processLine(buf);
+        if (!completed) throw new Error('Chat ended before a complete answer was received.');
+        set((s) => ({ chat: { ...s.chat, status: 'idle' } }));
+      } finally {
+        await reader.cancel().catch(() => undefined);
+        reader.releaseLock();
+      }
+    } catch (err) {
+      if (!current() || (err as Error).name === 'AbortError') return;
+      set((s) => {
+        // Drop the empty assistant placeholder if nothing streamed; keep the
+        // user's question visible so the error reads in context.
+        const msgs = s.chat.messages.slice();
+        const last = msgs[msgs.length - 1];
+        if (last && last.role === 'assistant' && !last.content) msgs.pop();
+        return { chat: { messages: msgs, status: 'error', error: (err as Error).message } };
+      });
+    } finally {
+      if (chatAbort === controller) chatAbort = null;
+    }
+  },
+
+  resetChat() {
+    chatAbort?.abort();
+    chatAbort = null;
+    set({ chat: emptyChat });
+  },
+
+  toggleChatFocus() {
+    set((s) => ({ chatUseFocus: !s.chatUseFocus }));
   },
 
   activeTab: 'explain',
@@ -778,11 +953,20 @@ export const useStore = create<State>((set, get) => ({
 
   selectTab(tab) {
     set({ activeTab: tab });
-    if (tab === 'brief' || tab === 'activity') return;
-    const existing = get().personaResults[tab];
-    if (existing && (existing.status === 'streaming' || existing.status === 'done')) return;
+    // 'activity' reads existing data; 'ask' starts a stream only when the user
+    // actually asks a question — neither needs a lazy kickoff here.
+    if (tab === 'activity' || tab === 'ask') return;
     const bundle = get().bundle;
     if (!bundle) return;
+    if (tab === 'ai-review') {
+      // Lazy: kick off the review the first time the tab is opened (or after an
+      // error). If it's already streaming or done, leave the result in place.
+      const cur = get().aiReview;
+      if (cur.status === 'idle' || cur.status === 'error') openAIReviewStream(bundle, set);
+      return;
+    }
+    const existing = get().personaResults[tab];
+    if (existing && (existing.status === 'streaming' || existing.status === 'done')) return;
     openPersonaStream(bundle, tab, set, get);
   },
 
@@ -834,18 +1018,42 @@ export const useStore = create<State>((set, get) => ({
     get().setLineComment(path, line, '');
   },
 
-  openComposer(path, startLine, endLine) {
+  openComposer(path, startLine, endLine, prefill) {
     set({
       composerTarget: {
         path,
         line: endLine,
         startLine,
+        ...(prefill ? { prefill } : {}),
       },
     });
   },
 
   closeComposer() {
     set({ composerTarget: null });
+  },
+
+  jumpToSuggestion(c) {
+    // Switch to the file first (kicks off its content/blame fetch), then hand
+    // the reveal + composer-open off to DiffViewer via `pendingReveal`. Doing
+    // the open there — after the editor for the target file has mounted —
+    // avoids racing DiffViewer's own "close composer when the file changes"
+    // effect, which would otherwise clobber a composer opened here.
+    get().selectFile(c.file);
+    const startLine = c.startLine && c.startLine <= c.line ? c.startLine : c.line;
+    set((s) => ({
+      pendingReveal: {
+        path: c.file,
+        line: c.line,
+        startLine,
+        prefill: c.body,
+        nonce: (s.pendingReveal?.nonce ?? 0) + 1,
+      },
+    }));
+  },
+
+  clearPendingReveal() {
+    set({ pendingReveal: null });
   },
 
   setReviewSummary(text) {
