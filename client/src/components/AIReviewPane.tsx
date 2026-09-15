@@ -146,4 +146,3 @@ function shortPath(path: string): string {
   const parts = path.split('/');
   return parts.length <= 2 ? path : `…/${parts.slice(-2).join('/')}`;
 }
-
