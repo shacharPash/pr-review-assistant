@@ -73,8 +73,8 @@ aiChatRouter.post('/api/ai-chat/stream', async (req: Request, res: Response) => 
   const runner = new ClaudeRunner({
     onChunk: (delta) => send({ type: 'chunk', delta }),
     onUsage: (usage) => send({ type: 'usage', usage }),
-    onDone: () => {
-      send({ type: 'done' });
+    onDone: (text) => {
+      send({ type: 'done', text });
       res.end();
     },
     onError: (message) => {

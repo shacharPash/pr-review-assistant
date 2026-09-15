@@ -240,8 +240,9 @@ describe('AI feature session regressions', () => {
     expect(next.url).toContain('&refresh=1'); expect(old.closed).toBe(true);
     old.emit('chunk', 'obsolete'); old.emit('done', '');
     expect(useStore.getState().aiReview.text).toBe('');
-    next.emit('chunk', 'current'); next.emit('done', '');
-    expect(useStore.getState().aiReview).toMatchObject({ text: 'current', status: 'done' });
+    const final = JSON.stringify({ verdict: 'comment', summary: 'Final assessment', comments: [{ file: 'a.ts', line: 1, body: 'Real finding' }] });
+    next.emit('chunk', '{"verdict":"approve","summary":"Early guess","comments":[]}'); next.emit('done', { text: final });
+    expect(useStore.getState().aiReview).toMatchObject({ text: final, status: 'done' });
   });
 
   it('aborts the old chat on PR switch and rejects late chunks and usage', async () => {
@@ -261,11 +262,11 @@ describe('AI feature session regressions', () => {
 
   it.each([false, true])('requires the chat terminal event, including an unterminated final line (%s)', async (terminal) => {
     await load();
-    const text = '{"type":"chunk","delta":"Partial answer"}\n' + (terminal ? '{"type":"done"}' : '');
+    const text = '{"type":"chunk","delta":"Partial answer"}\n' + (terminal ? '{"type":"done","text":"Corrected final answer"}' : '');
     fetchMock.mockImplementationOnce(async () => new Response(text));
     await useStore.getState().askChat('Question');
     expect(useStore.getState().chat.status).toBe(terminal ? 'idle' : 'error');
-    expect(useStore.getState().chat.messages.at(-1)?.content).toBe('Partial answer');
+    expect(useStore.getState().chat.messages.at(-1)?.content).toBe(terminal ? 'Corrected final answer' : 'Partial answer');
   });
 
   it('rejects blind staging and historical AI locations', async () => {
@@ -290,4 +291,13 @@ it('reveals a hidden hunk before staging an exact AI finding', async () => {
   useStore.getState().jumpToSuggestion({ file: file.path, line: 1, title: 'Finding', body: 'Review this', severity: 'bug' });
   expect(useStore.getState().showNoise).toBe(true);
   expect(useStore.getState().pendingReveal).toMatchObject({ path: file.path, line: 1, prefill: 'Review this' });
+});
+
+
+it('rejects a missing authoritative review result even after valid-looking chunks', async () => {
+  await load(); useStore.getState().selectTab('ai-review');
+  const source = FakeSource.all.at(-1)!;
+  source.emit('chunk', '{"verdict":"approve","summary":"Early guess","comments":[]}');
+  source.emit('done', {});
+  expect(useStore.getState().aiReview).toMatchObject({ status: 'error', text: '' });
 });

@@ -64,7 +64,7 @@ aiReviewRouter.get('/api/ai-review/stream', async (req: Request, res: Response) 
   const cached = req.query.refresh === '1' ? undefined : getAiReview(owner, repo, number, headSha, identity);
   if (cached && parseAIReview(cached)) {
     send('chunk', cached);
-    send('done', '');
+    send('done', { text: cached });
     res.end();
     return;
   }
@@ -79,7 +79,7 @@ aiReviewRouter.get('/api/ai-review/stream', async (req: Request, res: Response) 
         return;
       }
       setAiReview(owner, repo, number, headSha, identity, full);
-      send('done', '');
+      send('done', { text: full });
       res.end();
     },
     onError: (msg) => {

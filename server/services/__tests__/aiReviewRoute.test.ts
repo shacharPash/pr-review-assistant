@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import express from 'express';
+import * as policy from '../claudePolicy.js';
 import { request } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { aiReviewRouter } from '../../routes/aiReview.js';
@@ -75,4 +76,34 @@ describe('AI review cache and new route lifecycle', () => {
       req.destroy(); await vi.waitFor(() => expect(abort).toHaveBeenCalledOnce());
     } finally { req.destroy(); }
   });
+});
+
+
+it.each(['review', 'chat'])('delivers the authoritative non-prefix final %s through the real runner', async (kind) => {
+  start.mockRestore();
+  const final = kind === 'review'
+    ? JSON.stringify({ verdict: 'comment', summary: 'Final finding', comments: [{ file: 'a.ts', line: 1, body: 'Actual issue' }] })
+    : 'Corrected final answer';
+  const interim = kind === 'review' ? clean : 'Superseded preliminary answer';
+  const launch = vi.spyOn(policy, 'launchClaude').mockImplementation((_prompt, events) => {
+    queueMicrotask(() => {
+      events.onData(JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: interim }] } }) + '\n');
+      events.onData(JSON.stringify({ type: 'result', result: final }) + '\n');
+      events.onClose();
+    });
+    return () => {};
+  });
+  if (kind === 'review') {
+    const stream = await review();
+    expect(stream).toContain(`event: chunk\ndata: ${JSON.stringify(interim)}`);
+    expect(stream).toContain(`event: done\ndata: ${JSON.stringify({ text: final })}`);
+    expect(await review()).toContain(`event: done\ndata: ${JSON.stringify({ text: final })}`);
+    expect(launch).toHaveBeenCalledOnce();
+  } else {
+    const response = await fetch(base + '/api/ai-chat/stream', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...synthetic.meta, number, messages: [{ role: 'user', content: 'Synthetic question' }] }) });
+    const stream = await response.text();
+    expect(stream).toContain(JSON.stringify({ type: 'chunk', delta: interim }));
+    expect(stream).toContain(JSON.stringify({ type: 'done', text: final }));
+  }
 });

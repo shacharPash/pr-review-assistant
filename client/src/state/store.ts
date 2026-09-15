@@ -4,7 +4,7 @@ import { comparisonKey, prComparison, type Comparison } from '@shared/types';
 import type { PRBundle, DiffFile, TLDR, BlameRange } from '@shared/types';
 import type { PersonaId } from '@shared/personas';
 import type { PRComments } from '@shared/reviewComments';
-import { resolveAIReviewComment, type AIReviewComment } from '@shared/aiReview';
+import { parseAIReview, resolveAIReviewComment, type AIReviewComment } from '@shared/aiReview';
 import type { ChatMessage, AiChatEvent } from '@shared/aiChat';
 import type { CheckRun } from '@shared/checks';
 import { EMPTY_USAGE, addUsage, type TokenUsage } from '@shared/usage';
@@ -426,9 +426,15 @@ function openAIReviewStream(bundle: PRBundle, set: StoreSetter, refresh = false)
     acc += decode(e.data);
     set({ aiReview: { text: acc, status: 'streaming' } });
   });
-  es.addEventListener('done', () => {
+  es.addEventListener('done', (event: MessageEvent) => {
     if (!current()) return;
-    set({ aiReview: { text: acc, status: 'done' } });
+    let final: unknown;
+    try { final = JSON.parse(event.data)?.text; } catch { /* invalid terminal payload */ }
+    if (typeof final === 'string' && parseAIReview(final)) {
+      set({ aiReview: { text: final, status: 'done' } });
+    } else {
+      set({ aiReview: { text: '', status: 'error', error: 'AI review ended without a valid final result. Re-run to try again.' } });
+    }
     es.close();
     aiReviewEventSource = null;
   });
@@ -962,11 +968,16 @@ export const useStore = create<State>((set, get) => ({
       let completed = false;
       const processLine = (line: string) => {
         if (!line.trim()) return;
+        if (completed) throw new Error('Chat returned data after its final answer.');
         const evt = JSON.parse(line) as AiChatEvent;
         if (evt.type === 'chunk' && typeof evt.delta === 'string') appendDelta(evt.delta);
         else if (evt.type === 'usage') get().recordUsage(evt.usage);
         else if (evt.type === 'error') throw new Error(evt.message);
-        else if (evt.type === 'done') completed = true;
+        else if (evt.type === 'done' && typeof evt.text === 'string') {
+          set((state) => ({ chat: { ...state.chat, messages: state.chat.messages.map((message, i) =>
+            i === state.chat.messages.length - 1 && message.role === 'assistant' ? { ...message, content: evt.text } : message) } }));
+          completed = true;
+        }
         else throw new Error('Chat returned an invalid stream event.');
       };
       try {

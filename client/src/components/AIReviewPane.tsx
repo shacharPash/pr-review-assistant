@@ -110,6 +110,7 @@ export function AIReviewPane() {
           suggested {comments.length === 1 ? 'comment' : 'comments'}
         </span>
         {parsed.summary && <span className="air-summary">{parsed.summary}</span>}
+        <button type="button" className="link-btn retry" onClick={retry}>Re-run review</button>
       </div>
       {comments.map((c, i) => {
         const staged = !c.anchorWarning && !!lineComments[c.file]?.[c.line];
