@@ -326,13 +326,12 @@ export function InlineCommentsLayer({ editor, filePath, newLineMap }: Props) {
         return createPortal(
           <div>
             <ComposerCore
-              initialBody={lineComments[z.line]?.body ?? ''}
+              initialBody={lineComments[z.line]?.body ?? composerTarget?.prefill ?? ''}
               isEdit={!!lineComments[z.line]}
               onDelete={lineComments[z.line] ? () => { removeLineComment(filePath, z.line); closeComposer(); } : undefined}
               startLine={startLine}
               endLine={z.line}
               filePath={filePath}
-              initialBody={composerTarget?.prefill ?? ''}
               readOriginalLines={readOriginalLines}
               onCancel={closeComposer}
               onSave={(text, s, e) => {

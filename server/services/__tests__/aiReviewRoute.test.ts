@@ -5,7 +5,7 @@ import { request } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { aiReviewRouter } from '../../routes/aiReview.js';
 import { aiChatRouter } from '../../routes/aiChat.js';
-import { ClaudeRunner, type RunnerEvents, type RunOptions } from '../claudeRunner.js';
+import { ClaudeRunner, type RunnerEvents } from '../claudeRunner.js';
 import { setBundle, setGuidelines } from '../cache.js';
 import type { PRBundle } from '../../../shared/types.js';
 vi.mock('../guidelinesFetcher.js', () => ({ fetchGuidelines: async () => 'Synthetic conventions' }));
@@ -17,14 +17,15 @@ let output = '';
 const synthetic: PRBundle = { meta: { owner: 'synthetic', repo: 'repo', number: 1, headSha: 'head', baseSha: 'base',
   title: 'Synthetic title', body: '', author: 'test', state: 'open', isDraft: false, reviewDecision: null, url: '' },
   files: [], commitMessages: [] };
-let start: import('vitest').MockInstance<[prompt: string, opts?: RunOptions], void>;
+const spyOnStart = () => vi.spyOn(ClaudeRunner.prototype, 'startPrompt');
+let start: ReturnType<typeof spyOnStart>;
 const clean = JSON.stringify({ verdict: 'approve', summary: 'Synthetic assessment', comments: [] });
 beforeEach(async () => {
   number++;
   setBundle({ ...synthetic, meta: { ...synthetic.meta, number } });
   output = clean;
   // Stop at the common process boundary. No actual CLI or provider invocation.
-  start = vi.spyOn(ClaudeRunner.prototype, 'startPrompt').mockImplementation(function (this: ClaudeRunner) {
+  start = spyOnStart().mockImplementation(function (this: ClaudeRunner) {
     const events = (this as unknown as { events: RunnerEvents }).events;
     queueMicrotask(() => { events.onChunk(output); events.onDone(output); });
   });
