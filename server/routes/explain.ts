@@ -70,7 +70,7 @@ explainRouter.get('/api/explain/stream', (req: Request, res: Response) => {
     },
   });
 
-  req.on('close', () => runner.abort());
+  res.on('close', () => runner.abort());
 
   // The Checklist persona becomes Jira-aware: when the PR links a fully-fetched
   // ticket, ground the checklist in that ticket's acceptance criteria instead

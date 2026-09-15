@@ -1,11 +1,10 @@
-import { spawn } from 'node:child_process';
+import { launchClaude, type ClaudeLauncher } from './claudePolicy.js';
 import type { PRBundle } from '../../shared/types.js';
 import type { TokenUsage } from '../../shared/usage.js';
 
 export type { TokenUsage };
 
 const MAX_DIFF_CHARS = 200_000;
-const TIMEOUT_MS = 90_000;
 
 export interface RunOptions {
   /** Override the default reviewer-onboarding system prompt with a custom one. */
@@ -52,82 +51,45 @@ export interface RunnerEvents {
 }
 
 export class ClaudeRunner {
-  private child: ReturnType<typeof spawn> | null = null;
+  private cancel: (() => void) | null = null;
   private buffer = '';
   private lastText = '';
   private aborted = false;
-  private timer: NodeJS.Timeout | null = null;
-  /** Most recent usage seen on an `assistant` event. Used as a fallback when
-   *  the final `result` event doesn't carry its own top-level `usage` block
-   *  (varies by Claude CLI version / managed-org config). */
+  private started = false;
+  private terminal = false;
+  private sawResult = false;
+  private resultFailed = false;
   private lastUsage: TokenUsage | null = null;
 
-  constructor(private readonly events: RunnerEvents) {}
+  constructor(private readonly events: RunnerEvents, private readonly launcher: ClaudeLauncher = launchClaude) {}
 
   start(bundle: PRBundle, opts: RunOptions = {}): void {
-    const prompt = opts.systemPrompt
-      ? buildCustomPrompt(bundle, opts.systemPrompt)
-      : buildPrompt(bundle);
-    const args = ['-p', '--output-format', 'stream-json', '--verbose'];
-    if (opts.model) args.push('--model', opts.model);
-    const proc = spawn('claude', args, { stdio: ['pipe', 'pipe', 'pipe'] });
-    this.child = proc;
+    this.startPrompt(opts.systemPrompt ? buildCustomPrompt(bundle, opts.systemPrompt) : buildPrompt(bundle), opts);
+  }
 
-    proc.on('error', (err) => {
-      const e = err as NodeJS.ErrnoException;
-      if (e.code === 'ENOENT') {
-        this.events.onError(
-          'Claude Code CLI (`claude`) not found on PATH. Install from https://claude.ai/code.',
-        );
-      } else {
-        this.events.onError(`claude failed to start: ${e.message}`);
-      }
-      this.cleanup();
-    });
-
-    proc.stdout!.setEncoding('utf-8');
-    proc.stdout!.on('data', (chunk: string) => this.onStdout(chunk));
-
-    let stderr = '';
-    proc.stderr!.setEncoding('utf-8');
-    proc.stderr!.on('data', (chunk: string) => {
-      stderr += chunk;
-    });
-
-    proc.on('close', (code) => {
-      if (this.aborted) return;
-      if (this.timer) clearTimeout(this.timer);
-      if (code === 0) {
-        this.events.onDone(this.lastText);
-      } else {
-        const tail = stderr.trim().split('\n').slice(-5).join('\n');
-        this.events.onError(`claude exited with code ${code}.${tail ? ` ${tail}` : ''}`);
-      }
-      this.cleanup();
-    });
-
-    this.timer = setTimeout(() => {
-      this.events.onError(`Timed out after ${TIMEOUT_MS / 1000}s.`);
-      this.abort();
-    }, TIMEOUT_MS);
-
-    proc.stdin!.end(prompt);
+  /** All AI paths, including comment helpers, use the same execution policy. */
+  startPrompt(prompt: string, opts: RunOptions = {}): void {
+    if (this.started || this.aborted) return;
+    this.started = true;
+    this.cancel = this.launcher(prompt, {
+      onData: (chunk) => { if (!this.aborted) this.onStdout(chunk); },
+      onClose: (error) => {
+        if (this.aborted || this.terminal) return;
+        this.terminal = true;
+        if (this.buffer.trim()) this.handleLine(this.buffer);
+        this.buffer = '';
+        if (error) this.events.onError(error);
+        else if (this.resultFailed) this.events.onError('Claude did not complete the request.');
+        else if (!this.sawResult) this.events.onError('Claude returned no valid result.');
+        else this.events.onDone(this.lastText);
+      },
+    }, opts.model);
   }
 
   abort(): void {
     if (this.aborted) return;
     this.aborted = true;
-    if (this.timer) clearTimeout(this.timer);
-    this.child?.kill('SIGTERM');
-    this.cleanup();
-  }
-
-  private cleanup(): void {
-    this.child = null;
-    if (this.timer) {
-      clearTimeout(this.timer);
-      this.timer = null;
-    }
+    this.cancel?.();
   }
 
   private onStdout(chunk: string): void {
@@ -148,6 +110,13 @@ export class ClaudeRunner {
       return;
     }
 
+    if (!event || typeof event !== 'object') return;
+    if (event.type === 'result') {
+      this.sawResult = typeof event.result === 'string';
+      this.resultFailed = event.is_error === true;
+      if (this.resultFailed) return;
+    }
+
     // Capture usage from assistant events regardless of text — it's the
     // authoritative cumulative count and the result event may omit it.
     if (event.type === 'assistant' && event.message?.usage) {
@@ -155,7 +124,7 @@ export class ClaudeRunner {
       if (u) this.lastUsage = u;
     }
 
-    if (event.type === 'assistant' && event.message?.content) {
+    if (event.type === 'assistant' && Array.isArray(event.message?.content)) {
       const text = extractText(event.message.content);
       if (text && text.length > this.lastText.length && text.startsWith(this.lastText)) {
         const delta = text.slice(this.lastText.length);
@@ -213,6 +182,7 @@ export function normalizeClaudeUsage(raw: ClaudeUsage | undefined): TokenUsage |
 }
 interface ClaudeEvent {
   type: string;
+  is_error?: boolean;
   message?: { content?: ClaudeContentBlock[]; usage?: ClaudeUsage };
   result?: string;
   usage?: ClaudeUsage;
@@ -220,7 +190,7 @@ interface ClaudeEvent {
 
 function extractText(content: ClaudeContentBlock[]): string {
   return content
-    .filter((b) => b.type === 'text' && typeof b.text === 'string')
+    .filter((b) => b && b.type === 'text' && typeof b.text === 'string')
     .map((b) => b.text as string)
     .join('');
 }

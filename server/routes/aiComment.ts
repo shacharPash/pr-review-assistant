@@ -1,6 +1,5 @@
 import { Router, type Request, type Response } from 'express';
-import { spawn } from 'node:child_process';
-import { normalizeClaudeUsage } from '../services/claudeRunner.js';
+import { ClaudeRunner } from '../services/claudeRunner.js';
 import type { TokenUsage } from '../../shared/usage.js';
 
 export const aiCommentRouter = Router();
@@ -13,8 +12,6 @@ interface Body {
   originalCode?: string;
   draft?: string;
 }
-
-const TIMEOUT_MS = 60_000;
 
 aiCommentRouter.post('/api/ai-comment', async (req: Request, res: Response) => {
   const { mode, filePath, startLine, endLine, originalCode, draft } = req.body as Body;
@@ -30,18 +27,18 @@ aiCommentRouter.post('/api/ai-comment', async (req: Request, res: Response) => {
     ? buildSuggestPrompt(filePath, startLine, endLine, originalCode ?? '', draft ?? '')
     : buildEnhancePrompt(filePath, startLine, endLine, originalCode ?? '', draft ?? '');
 
+  const controller = new AbortController();
+  const disconnect = () => controller.abort();
+  res.once('close', disconnect);
   try {
-    const { text, usage } = await runClaude(prompt);
-    res.json({ text, usage });
+    const { text, usage } = await runClaude(prompt, controller.signal);
+    if (!res.destroyed) res.json({ text, usage });
   } catch (err) {
-    const e = err as NodeJS.ErrnoException & { stderr?: string };
-    if (e.code === 'ENOENT') {
-      return res.status(502).json({ error: 'Claude CLI not found on PATH.' });
+    if (!res.destroyed && !controller.signal.aborted) {
+      res.status(502).json({ error: err instanceof Error ? err.message : 'Claude call failed.' });
     }
-    return res.status(502).json({
-      error: 'Claude call failed',
-      detail: e.stderr ?? e.message,
-    });
+  } finally {
+    res.removeListener('close', disconnect);
   }
 });
 
@@ -101,65 +98,19 @@ interface ClaudeResult {
   usage: TokenUsage | null;
 }
 
-function runClaude(prompt: string): Promise<ClaudeResult> {
+export function runClaude(prompt: string, signal?: AbortSignal): Promise<ClaudeResult> {
   return new Promise((resolve, reject) => {
-    // stream-json + --verbose mirrors how the streaming routes call claude,
-    // so we get the same `result` event with usage info instead of plain
-    // text. --model sonnet because these helpers are short-output (a code
-    // suggestion or a 1-3 sentence rewrite) — Opus adds no quality here.
-    const proc = spawn(
-      'claude',
-      ['-p', '--output-format', 'stream-json', '--verbose', '--model', 'sonnet'],
-      { stdio: ['pipe', 'pipe', 'pipe'] },
-    );
-    let buffer = '';
-    let stderr = '';
-    let finalText = '';
     let usage: TokenUsage | null = null;
-
-    const timer = setTimeout(() => {
-      proc.kill('SIGTERM');
-      reject(new Error(`AI call timed out after ${TIMEOUT_MS / 1000}s`));
-    }, TIMEOUT_MS);
-
-    proc.stdout.setEncoding('utf8');
-    proc.stderr.setEncoding('utf8');
-    proc.stdout.on('data', (chunk: string) => {
-      buffer += chunk;
-      const lines = buffer.split('\n');
-      buffer = lines.pop() ?? '';
-      for (const line of lines) {
-        if (!line.trim()) continue;
-        try {
-          const event = JSON.parse(line) as {
-            type: string;
-            result?: string;
-            usage?: Parameters<typeof normalizeClaudeUsage>[0];
-          };
-          if (event.type === 'result' && typeof event.result === 'string') {
-            finalText = event.result;
-            usage = normalizeClaudeUsage(event.usage);
-          }
-        } catch {
-          // Non-JSON line — ignore.
-        }
-      }
+    const cleanup = () => signal?.removeEventListener('abort', abort);
+    const runner = new ClaudeRunner({
+      onChunk: () => {},
+      onUsage: (value) => { usage = value; },
+      onDone: (text) => { cleanup(); resolve({ text: text.trim(), usage }); },
+      onError: (message) => { cleanup(); reject(new Error(message)); },
     });
-    proc.stderr.on('data', (c: string) => { stderr += c; });
-    proc.on('error', (err) => {
-      clearTimeout(timer);
-      reject(err);
-    });
-    proc.on('close', (code) => {
-      clearTimeout(timer);
-      if (code === 0) resolve({ text: finalText.trim(), usage });
-      else {
-        const e = new Error(`claude exited ${code}`) as Error & { code?: number; stderr?: string };
-        e.code = code ?? -1;
-        e.stderr = stderr;
-        reject(e);
-      }
-    });
-    proc.stdin.end(prompt);
+    const abort = () => { runner.abort(); cleanup(); reject(new Error('AI request cancelled.')); };
+    if (signal?.aborted) { abort(); return; }
+    signal?.addEventListener('abort', abort, { once: true });
+    runner.startPrompt(prompt, { model: 'sonnet' });
   });
 }
