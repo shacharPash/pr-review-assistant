@@ -34,7 +34,7 @@ export async function fetchChecks(
   ];
   let stdout: string;
   try {
-    const out = await execFileAsync('gh', args, { maxBuffer: 10 * 1024 * 1024 });
+    const out = await execFileAsync('gh', args, { timeout: 30_000, maxBuffer: 10 * 1024 * 1024 });
     stdout = out.stdout;
   } catch (err) {
     const e = err as NodeJS.ErrnoException & { stderr?: string; stdout?: string };

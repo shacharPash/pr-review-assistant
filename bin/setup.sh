@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 #
 # One-step setup for PR Review Assistant.
-# Idempotent — re-runs are safe (will only do what's still needed).
+# Idempotent , re-runs are safe (will only do what's still needed).
 #
 # Usage:
 #   bash bin/setup.sh
 #
 # What it does:
 #   1. Verifies node + npm + gh + claude are on PATH (prints fix hints if not).
-#   2. Runs `npm install` if node_modules is missing or package-lock changed.
+#   2. Runs `npm ci` if node_modules is missing or package-lock changed.
 #   3. Creates .env from .env.example if not present (no real values).
 #   4. Prints next-step instructions.
 #
@@ -28,11 +28,16 @@ title "Checking required tools"
 
 NODE_OK=1
 if ! command -v node >/dev/null 2>&1; then
-  miss "node not found. Install Node 20+ from https://nodejs.org"
+  miss "node not found. Install Node 22.12+ or 24+ from https://nodejs.org"
   NODE_OK=0
 else
   NODE_VERSION="$(node --version)"
-  ok "node $NODE_VERSION"
+  if ! node -e "const [major, minor] = process.versions.node.split('.').map(Number); process.exit((major === 22 && minor >= 12) || major === 24 || major >= 26 ? 0 : 1)"; then
+    miss "Unsupported Node version. Use Node 22.12+ or 24+."
+    NODE_OK=0
+  else
+    ok "node $NODE_VERSION"
+  fi
 fi
 
 if ! command -v npm >/dev/null 2>&1; then
@@ -52,7 +57,7 @@ else
 fi
 
 if ! command -v claude >/dev/null 2>&1; then
-  warn "claude CLI not found. Install from https://claude.ai/code — without it, AI features (brief / tweet / plain-english) won't work but the diff viewer still does."
+  warn "claude CLI not found. Install from https://claude.ai/code , without it, AI features (brief / tweet / plain-english) won't work but the diff viewer still does."
 else
   ok "claude $(claude --version 2>/dev/null | head -1 || echo 'present')"
 fi
@@ -62,27 +67,27 @@ fi
 title "Installing npm dependencies"
 
 if [ ! -d node_modules ] || [ package-lock.json -nt node_modules/.package-lock.json ]; then
-  npm install
+  npm ci
   ok "Dependencies installed"
 else
-  ok "Dependencies up to date — skipping npm install"
+  ok "Dependencies up to date , skipping npm ci"
 fi
 
 title "Local config"
 
 if [ ! -f .env ] && [ -f .env.example ]; then
-  cp .env.example .env
+  (umask 077; cp .env.example .env)
   ok "Created .env from .env.example"
-  warn "Optional: edit .env to enable Jira links — see README for details"
+  warn "Optional: edit .env to enable Jira links , see README for details"
 elif [ -f .env ]; then
   ok ".env already present"
 else
-  warn ".env.example not found — skipping env setup"
+  warn ".env.example not found , skipping env setup"
 fi
 
 title "All set"
 echo
 echo "Run the app with:"
-echo "  npm run dev"
+echo "  npm run serve"
 echo
 echo "Then open http://localhost:5173 and paste a GitHub PR URL."

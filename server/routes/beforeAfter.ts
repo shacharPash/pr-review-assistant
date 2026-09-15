@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import { ClaudeRunner, pickModel } from '../services/claudeRunner.js';
-import { getBundle, getBeforeAfter, setBeforeAfter } from '../services/cache.js';
+import { getBundle, getGenerated, setGenerated, generatedIdentity } from '../services/cache.js';
 
 export const beforeAfterRouter = Router();
 
@@ -66,10 +66,11 @@ beforeAfterRouter.get('/api/before-after/stream', (req: Request, res: Response) 
     }
   };
 
-  const cached = getBeforeAfter(owner, repo, number, headSha);
+  const variant = generatedIdentity(bundle, 'beforeAfter', pickModel(req.query.mode, 'light'));
+  const cached = req.query.retry === '1' ? undefined : getGenerated(owner, repo, number, headSha, variant);
   if (cached !== undefined) {
     send('chunk', cached);
-    send('done', '');
+    send('done', { text: cached });
     res.end();
     return;
   }
@@ -78,8 +79,8 @@ beforeAfterRouter.get('/api/before-after/stream', (req: Request, res: Response) 
     onChunk: (delta) => send('chunk', delta),
     onUsage: (usage) => send('usage', usage),
     onDone: (full) => {
-      setBeforeAfter(owner, repo, number, headSha, full.trim());
-      send('done', '');
+      setGenerated(owner, repo, number, headSha, variant, full.trim());
+      send('done', { text: full });
       res.end();
     },
     onError: (msg) => {

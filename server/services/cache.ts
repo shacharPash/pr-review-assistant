@@ -1,8 +1,11 @@
+import { createHash } from 'node:crypto';
+import { BoundedCache } from './boundedCache.js';
 import type { PRBundle } from '../../shared/types.js';
 import type { PRComments } from '../../shared/reviewComments.js';
 
 interface Entry {
   bundle: PRBundle;
+  generated?: Record<string, string>;
   tldr?: string;
   aiReview?: Record<string, string>; // raw JSON text of the AI Review result (see shared/aiReview.ts)
   guidelines?: string; // repo convention files, concatenated (or "" when none)
@@ -15,7 +18,11 @@ interface Entry {
   storedAt: number;
 }
 
-const store = new Map<string, Entry>();
+const store = new BoundedCache<Entry>();
+const cleanup = setInterval(() => store.prune(), 60_000);
+cleanup.unref();
+
+export function clearCache(): void { store.clear(); }
 
 function key(owner: string, repo: string, number: number, headSha: string): string {
   return `${owner}/${repo}:${number}:${headSha}`;
@@ -33,8 +40,8 @@ export function getBundle(
 export function setBundle(bundle: PRBundle): void {
   const { owner, repo, number, headSha } = bundle.meta;
   const k = key(owner, repo, number, headSha);
-  const existing = store.get(k);
-  store.set(k, { bundle, tldr: existing?.tldr, storedAt: Date.now() });
+  store.delete(k);
+  store.set(k, { bundle, storedAt: Date.now() });
 }
 
 export function getTLDR(
@@ -208,4 +215,19 @@ export function setReviewComments(
   const existing = store.get(k);
   if (!existing) return;
   store.set(k, { ...existing, reviewComments: comments });
+}
+
+/** Model and prompt versions are part of every generated result's identity. */
+export function getGenerated(owner: string, repo: string, number: number, headSha: string, variant: string): string | undefined {
+  return store.get(key(owner, repo, number, headSha))?.generated?.[variant];
+}
+
+export function setGenerated(owner: string, repo: string, number: number, headSha: string, variant: string, text: string): void {
+  const k = key(owner, repo, number, headSha);
+  const entry = store.get(k);
+  if (entry) store.set(k, { ...entry, generated: { ...entry.generated, [variant]: text } });
+}
+
+export function generatedIdentity(bundle: PRBundle, kind: string, model: string | undefined): string {
+  return `${kind}:v2:${model ?? 'default'}:${createHash('sha256').update(JSON.stringify(bundle)).digest('hex')}`;
 }

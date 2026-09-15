@@ -1,3 +1,4 @@
+import { isAIEnabled } from './privacy.js';
 import { requestGuard, sessionFetch, sessionStream, invalidateSession, invalidateComparison } from './session.js';
 import { create } from 'zustand';
 import { comparisonKey, prComparison, type Comparison } from '@shared/types';
@@ -164,6 +165,7 @@ interface State {
   jumpToSuggestion: (c: AIReviewComment) => void;
   /** Clear a consumed pending-reveal request (called by DiffViewer). */
   clearPendingReveal: () => void;
+  startDiagram: () => void;
   fetchFullContent: (path: string) => Promise<void>;
   fetchBlame: (path: string) => Promise<void>;
   selectTab: (tab: TLDRTab) => void;
@@ -243,7 +245,7 @@ type StoreSetter = (
  * mid-flight stream keeps its mode even if the picker changes.
  */
 function modeParam(): string {
-  return `&mode=${usePrefs.getState().modelPreference}`;
+  return `&mode=${usePrefs.getState().modelPreference}&aiConsent=1`;
 }
 
 function attachUsageListener(es: EventSource, set: StoreSetter): void {
@@ -257,7 +259,15 @@ function attachUsageListener(es: EventSource, set: StoreSetter): void {
   });
 }
 
+function finalStreamText(event: MessageEvent): string | undefined {
+  try {
+    const result = JSON.parse(event.data) as { text?: unknown };
+    return typeof result?.text === 'string' ? result.text : undefined;
+  } catch { return undefined; }
+}
+
 function openComplexityStream(bundle: PRBundle, set: StoreSetter) {
+  if (!isAIEnabled()) return;
   if (complexityEventSource) {
     complexityEventSource.close();
     complexityEventSource = null;
@@ -279,8 +289,11 @@ function openComplexityStream(bundle: PRBundle, set: StoreSetter) {
     acc += decode(e.data);
     set({ complexity: { text: acc, status: 'streaming' } });
   });
-  es.addEventListener('done', () => {
-    set({ complexity: { text: acc.trim().toLowerCase(), status: 'done' } });
+  es.addEventListener('done', (event: MessageEvent) => {
+    const text = finalStreamText(event);
+    set({ complexity: text === undefined
+      ? { text: acc, status: 'error', error: 'The stream ended without a complete final result.' }
+      : { text: text.trim().toLowerCase(), status: 'done' } });
     es.close();
     complexityEventSource = null;
   });
@@ -293,6 +306,7 @@ function openComplexityStream(bundle: PRBundle, set: StoreSetter) {
 }
 
 function openBeforeAfterStream(bundle: PRBundle, set: StoreSetter) {
+  if (!isAIEnabled()) return;
   if (beforeAfterEventSource) {
     beforeAfterEventSource.close();
     beforeAfterEventSource = null;
@@ -314,8 +328,11 @@ function openBeforeAfterStream(bundle: PRBundle, set: StoreSetter) {
     acc += decode(e.data);
     set({ beforeAfter: { text: acc, status: 'streaming' } });
   });
-  es.addEventListener('done', () => {
-    set({ beforeAfter: { text: acc.trim(), status: 'done' } });
+  es.addEventListener('done', (event: MessageEvent) => {
+    const text = finalStreamText(event);
+    set({ beforeAfter: text === undefined
+      ? { text: acc, status: 'error', error: 'The stream ended without a complete final result.' }
+      : { text: text.trim(), status: 'done' } });
     es.close();
     beforeAfterEventSource = null;
   });
@@ -328,6 +345,7 @@ function openBeforeAfterStream(bundle: PRBundle, set: StoreSetter) {
 }
 
 function openDiagramStream(bundle: PRBundle, set: StoreSetter) {
+  if (!isAIEnabled()) return;
   if (diagramEventSource) {
     diagramEventSource.close();
     diagramEventSource = null;
@@ -349,8 +367,11 @@ function openDiagramStream(bundle: PRBundle, set: StoreSetter) {
     acc += decode(e.data);
     set({ diagram: { text: acc, status: 'streaming' } });
   });
-  es.addEventListener('done', () => {
-    set({ diagram: { text: acc.trim(), status: 'done' } });
+  es.addEventListener('done', (event: MessageEvent) => {
+    const text = finalStreamText(event);
+    set({ diagram: text === undefined
+      ? { text: acc, status: 'error', error: 'The stream ended without a complete final result.' }
+      : { text: text.trim(), status: 'done' } });
     es.close();
     diagramEventSource = null;
   });
@@ -363,6 +384,7 @@ function openDiagramStream(bundle: PRBundle, set: StoreSetter) {
 }
 
 function openHeadlineStream(bundle: PRBundle, set: StoreSetter) {
+  if (!isAIEnabled()) return;
   if (headlineEventSource) {
     headlineEventSource.close();
     headlineEventSource = null;
@@ -386,8 +408,11 @@ function openHeadlineStream(bundle: PRBundle, set: StoreSetter) {
     acc += decode(e.data);
     set({ headline: { text: acc, status: 'streaming' } });
   });
-  es.addEventListener('done', () => {
-    set({ headline: { text: acc.trim(), status: 'done' } });
+  es.addEventListener('done', (event: MessageEvent) => {
+    const text = finalStreamText(event);
+    set({ headline: text === undefined
+      ? { text: acc, status: 'error', error: 'The stream ended without a complete final result.' }
+      : { text: text.trim(), status: 'done' } });
     es.close();
     headlineEventSource = null;
   });
@@ -400,6 +425,7 @@ function openHeadlineStream(bundle: PRBundle, set: StoreSetter) {
 }
 
 function openAIReviewStream(bundle: PRBundle, set: StoreSetter, refresh = false) {
+  if (!isAIEnabled()) return;
   if (aiReviewEventSource) {
     aiReviewEventSource.close();
     aiReviewEventSource = null;
@@ -575,11 +601,8 @@ export const useStore = create<State>((set, get) => ({
         const shorthand = `${bundle.meta.owner}/${bundle.meta.repo}#${bundle.meta.number}`;
         window.history.replaceState(null, '', `/?pr=${encodeURIComponent(shorthand)}`);
       }
-      // AI Review is heavy (deep bug-finding, minutes on large PRs), so it is
-      // NOT started on load , it streams lazily the first time the user opens
-      // the AI Review tab (see selectTab). Everything else pre-warms here.
+      // Header insights start only with consent. Other panels start when opened.
       openHeadlineStream(bundle, set);
-      openDiagramStream(bundle, set);
       openBeforeAfterStream(bundle, set);
       openComplexityStream(bundle, set);
       // Reviewer/bot comments — non-blocking; UI shows once they arrive.
@@ -905,6 +928,7 @@ export const useStore = create<State>((set, get) => ({
   },
 
   async askChat(question) {
+    if (!isAIEnabled()) return;
     const q = question.trim();
     const { bundle, chat } = get();
     if (!bundle || !q || chat.status === 'streaming') return;
@@ -939,7 +963,7 @@ export const useStore = create<State>((set, get) => ({
     };
 
     try {
-      const res = await fetch('/api/ai-chat/stream', {
+      const res = await fetch('/api/ai-chat/stream?aiConsent=1', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         signal,
@@ -1022,6 +1046,11 @@ export const useStore = create<State>((set, get) => ({
     set((s) => ({ chatUseFocus: !s.chatUseFocus }));
   },
 
+  startDiagram() {
+    const bundle = get().bundle;
+    if (bundle) openDiagramStream(bundle, set);
+  },
+
   activeTab: 'explain',
   personaResults: {},
 
@@ -1029,7 +1058,7 @@ export const useStore = create<State>((set, get) => ({
     set({ activeTab: tab });
     // 'activity' reads existing data; 'ask' starts a stream only when the user
     // actually asks a question , neither needs a lazy kickoff here.
-    if (tab === 'activity' || tab === 'ask') return;
+    if (tab === 'activity' || tab === 'ask' || !isAIEnabled()) return;
     const bundle = get().bundle;
     if (!bundle) return;
     if (tab === 'ai-review') {
@@ -1047,7 +1076,7 @@ export const useStore = create<State>((set, get) => ({
   retryPersona(id) {
     const bundle = get().bundle;
     if (!bundle) return;
-    openPersonaStream(bundle, id, set, get);
+    openPersonaStream(bundle, id, set, get, true);
   },
 
   toggleReviewed(path) {
@@ -1270,7 +1299,9 @@ function openPersonaStream(
   id: PersonaId,
   set: StoreSetter,
   get: () => State,
+  retry = false,
 ) {
+  if (!isAIEnabled()) return;
   const existing = personaEventSources.get(id);
   if (existing) {
     existing.close();
@@ -1282,7 +1313,7 @@ function openPersonaStream(
     `&number=${bundle.meta.number}` +
     `&headSha=${bundle.meta.headSha}` +
     `&persona=${encodeURIComponent(id)}` +
-    modeParam();
+    modeParam() + (retry ? '&retry=1' : '');
   const es = sessionStream(url);
   personaEventSources.set(id, es);
   set({ personaResults: { ...get().personaResults, [id]: { text: '', status: 'streaming' } } });
@@ -1297,8 +1328,11 @@ function openPersonaStream(
     acc += decode(e.data);
     set({ personaResults: { ...get().personaResults, [id]: { text: acc, status: 'streaming' } } });
   });
-  es.addEventListener('done', () => {
-    set({ personaResults: { ...get().personaResults, [id]: { text: acc, status: 'done' } } });
+  es.addEventListener('done', (event: MessageEvent) => {
+    const text = finalStreamText(event);
+    set({ personaResults: { ...get().personaResults, [id]: text === undefined
+      ? { text: acc, status: 'error', error: 'The stream ended without a complete final result.' }
+      : { text, status: 'done' } } });
     es.close();
     personaEventSources.delete(id);
   });

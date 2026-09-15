@@ -11,12 +11,10 @@ export function AuthorChip() {
       rel="noreferrer"
       title={`Open @${author} on GitHub`}
     >
-      <img
+      <span
         className="author-chip-avatar"
-        src={`https://github.com/${encodeURIComponent(author)}.png?size=40`}
-        alt=""
-        loading="lazy"
-      />
+        aria-hidden="true"
+      >{author.slice(0, 1).toUpperCase()}</span>
       <span className="author-chip-handle">@{author}</span>
     </a>
   );

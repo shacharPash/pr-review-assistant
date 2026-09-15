@@ -1,4 +1,5 @@
 import { usePrefs, type ModelPreference } from '../state/preferences.js';
+import { LocalDataControls } from './LocalDataControls.js';
 import { TokenBadge } from './TokenBadge.js';
 
 export function HeaderControls() {
@@ -7,6 +8,7 @@ export function HeaderControls() {
 
   return (
     <div className="controls">
+      <LocalDataControls />
       <TokenBadge />
       <SegmentedControl<ModelPreference>
         label="AI model"

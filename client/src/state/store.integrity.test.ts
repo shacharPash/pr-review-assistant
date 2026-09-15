@@ -1,3 +1,4 @@
+import { usePrivacy } from './privacy.js';
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { useStore, selectDisplayFiles } from './store.js';
 import { prComparison, comparisonKey, type PRBundle, type DiffFile } from '../../../shared/types.js';
@@ -35,9 +36,12 @@ async function defaultFetch(url: string, _init?: RequestInit): Promise<Response>
   return response({ ranges: [], runs: [] });
 }
 
+
 const settle = async () => { for (let i = 0; i < 10; i++) await Promise.resolve(); };
 beforeEach(() => {
   storage.clear();
+  usePrivacy.setState({ aiEnabled: true });
+  FakeSource.all = [];
   useStore.setState(original, true);
   vi.stubGlobal('window', { localStorage: {
     getItem: (k: string) => storage.get(k) ?? null,
@@ -51,6 +55,20 @@ afterEach(() => { vi.unstubAllGlobals(); });
 const load = async (n = 1) => { await useStore.getState().loadPR(`owner/repo#${n}`); await settle(); };
 
 describe('review session integrity', () => {
+  it('opens a PR and preserves manual review without starting AI before opt-in', async () => {
+    usePrivacy.setState({ aiEnabled: false });
+    await load();
+    useStore.getState().retryAIReview();
+    useStore.getState().selectTab('ai-review');
+    await useStore.getState().askChat('private question');
+    useStore.getState().startDiagram();
+    useStore.getState().selectTab('checklist');
+    expect(FakeSource.all).toHaveLength(0);
+    expect(fetchMock.mock.calls.some(([url]) => url.startsWith('/api/ai-'))).toBe(false);
+    expect(useStore.getState().bundle).not.toBeNull();
+    expect(fetchMock.mock.calls.some(([url]) => url.startsWith('/api/pr/file'))).toBe(true);
+  });
+
   it('isolates summaries and drafts between PRs even when head SHAs match', async () => {
     await load(1);
     useStore.getState().setReviewSummary('Private context for A');
@@ -253,7 +271,7 @@ describe('AI feature session regressions', () => {
     const body = new ReadableStream<Uint8Array>({ start(controller) { stream = controller; } });
     fetchMock.mockImplementationOnce(async () => ({ ok: true, body } as Response));
     const old = useStore.getState().askChat('Question for A'); await settle();
-    const chatCall = fetchMock.mock.calls.find(([url]) => url === '/api/ai-chat/stream')!;
+    const chatCall = fetchMock.mock.calls.find(([url]) => url === '/api/ai-chat/stream?aiConsent=1')!;
     await load(2);
     expect(chatCall[1]!.signal!.aborted).toBe(true);
     stream.enqueue(new TextEncoder().encode('{"type":"chunk","delta":"A secret"}\n{"type":"usage","usage":{"input":99}}\n'));
@@ -302,4 +320,30 @@ it('rejects a missing authoritative review result even after valid-looking chunk
   source.emit('chunk', '{"verdict":"approve","summary":"Early guess","comments":[]}');
   source.emit('done', {});
   expect(useStore.getState().aiReview).toMatchObject({ status: 'error', text: '' });
+});
+
+
+it.each(['headline', 'beforeAfter', 'complexity', 'diagram', 'explain'] as const)(
+  'uses the authoritative final %s result instead of interim chunks', async (kind) => {
+    await load();
+    if (kind === 'diagram') useStore.getState().startDiagram();
+    if (kind === 'explain') useStore.getState().selectTab('explain');
+    const route = kind === 'beforeAfter' ? 'before-after' : kind;
+    const source = FakeSource.all.find((entry) => entry.url.startsWith(`/api/${route}/`))!;
+    expect(new URL(source.url, 'http://localhost').searchParams.get('aiConsent')).toBe('1');
+    source.emit('chunk', 'superseded interim');
+    const final = kind === 'complexity' ? 'complex' : 'Corrected final answer';
+    source.emit('done', { text: final });
+    const result = kind === 'explain' ? useStore.getState().personaResults.explain : useStore.getState()[kind];
+    expect(result).toEqual({ text: final, status: 'done' });
+    expect(source.closed).toBe(true);
+  },
+);
+
+it('starts only the requested AI panel and includes consent on review and chat', async () => {
+  await load();
+  expect(FakeSource.all.some((source) => /ai-review|explain|diagram/.test(source.url))).toBe(false);
+  useStore.getState().selectTab('ai-review');
+  const source = FakeSource.all.find((entry) => entry.url.startsWith('/api/ai-review/'))!;
+  expect(new URL(source.url, 'http://localhost').searchParams.get('aiConsent')).toBe('1');
 });

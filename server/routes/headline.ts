@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import { ClaudeRunner, pickModel } from '../services/claudeRunner.js';
-import { getBundle, getHeadline, setHeadline } from '../services/cache.js';
+import { getBundle, getGenerated, setGenerated, generatedIdentity } from '../services/cache.js';
 
 export const headlineRouter = Router();
 
@@ -46,10 +46,11 @@ headlineRouter.get('/api/headline/stream', (req: Request, res: Response) => {
     }
   };
 
-  const cached = getHeadline(owner, repo, number, headSha);
+  const variant = generatedIdentity(bundle, 'headline', pickModel(req.query.mode, 'light'));
+  const cached = req.query.retry === '1' ? undefined : getGenerated(owner, repo, number, headSha, variant);
   if (cached) {
     send('chunk', cached);
-    send('done', '');
+    send('done', { text: cached });
     res.end();
     return;
   }
@@ -58,8 +59,8 @@ headlineRouter.get('/api/headline/stream', (req: Request, res: Response) => {
     onChunk: (delta) => send('chunk', delta),
     onUsage: (usage) => send('usage', usage),
     onDone: (full) => {
-      setHeadline(owner, repo, number, headSha, full.trim());
-      send('done', '');
+      setGenerated(owner, repo, number, headSha, variant, full.trim());
+      send('done', { text: full });
       res.end();
     },
     onError: (msg) => {

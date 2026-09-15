@@ -6,13 +6,14 @@ vi.mock('../state/store.js', async (original) => {
   const store = actual.useStore;
   return { ...actual, useStore: Object.assign((selector: (s: ReturnType<typeof store.getState>) => unknown) => selector(store.getState()), store) };
 });
+import { usePrivacy } from '../state/privacy.js';
 import { usePrefs } from '../state/preferences.js';
 import { useStore } from '../state/store.js';
 import { AIReviewPane } from './AIReviewPane.js';
 import { AskPane } from './AskPane.js';
-beforeEach(() => useStore.setState({ ...useStore.getInitialState(), bundle: {
+beforeEach(() => { usePrivacy.setState({ aiEnabled: true }); useStore.setState({ ...useStore.getInitialState(), bundle: {
   meta: { owner: 'owner', repo: 'repo', number: 1 } as never, files: [], commitMessages: [],
-} }, true));
+} }, true); });
 const render = (raw: string) => {
   useStore.setState({ aiReview: { text: raw, status: 'done' } });
   return renderToStaticMarkup(React.createElement(AIReviewPane));
