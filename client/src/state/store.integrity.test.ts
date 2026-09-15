@@ -1,3 +1,4 @@
+import { usePrivacy } from './privacy.js';
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { useStore, selectDisplayFiles } from './store.js';
 import { prComparison, comparisonKey, type PRBundle, type DiffFile } from '../../../shared/types.js';
@@ -27,10 +28,12 @@ class FakeSource extends EventTarget {
 }
 const original = useStore.getInitialState();
 const storage = new Map<string, string>();
-let fetchMock: ReturnType<typeof vi.fn<[string, RequestInit?], Promise<Response>>>;
+let fetchMock: ReturnType<typeof vi.fn<(url: string, init?: RequestInit) => Promise<Response>>>;
 const settle = async () => { for (let i = 0; i < 10; i++) await Promise.resolve(); };
 beforeEach(() => {
   storage.clear();
+  usePrivacy.setState({ aiEnabled: true });
+  FakeSource.all = [];
   useStore.setState(original, true);
   vi.stubGlobal('window', { localStorage: {
     getItem: (k: string) => storage.get(k) ?? null,
@@ -49,6 +52,17 @@ afterEach(() => { vi.unstubAllGlobals(); });
 const load = async (n = 1) => { await useStore.getState().loadPR(`owner/repo#${n}`); await settle(); };
 
 describe('review session integrity', () => {
+  it('opens a PR and preserves manual review without starting AI before opt-in', async () => {
+    usePrivacy.setState({ aiEnabled: false });
+    await load();
+    useStore.getState().startTLDR();
+    useStore.getState().startDiagram();
+    useStore.getState().selectTab('checklist');
+    expect(FakeSource.all).toHaveLength(0);
+    expect(useStore.getState().bundle).not.toBeNull();
+    expect(fetchMock.mock.calls.some(([url]) => url.startsWith('/api/pr/file'))).toBe(true);
+  });
+
   it('isolates summaries and drafts between PRs even when head SHAs match', async () => {
     await load(1);
     useStore.getState().setReviewSummary('Private context for A');
@@ -131,7 +145,8 @@ describe('review session integrity', () => {
     });
     expect(useStore.getState().tldr.text).toBe('');
     expect(useStore.getState().headline.text).toBe('');
-    expect(useStore.getState().tldr.status).toBe('streaming');
+    expect(useStore.getState().tldr.status).toBe('idle');
+    expect(useStore.getState().headline.status).toBe('streaming');
   });
 
   it('clears only the confirmed submitted snapshot and preserves edits during flight', async () => {

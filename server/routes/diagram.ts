@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import { ClaudeRunner, pickModel } from '../services/claudeRunner.js';
-import { getBundle, getDiagram, setDiagram } from '../services/cache.js';
+import { getBundle, getGenerated, setGenerated } from '../services/cache.js';
 
 export const diagramRouter = Router();
 
@@ -67,7 +67,8 @@ diagramRouter.get('/api/diagram/stream', (req: Request, res: Response) => {
     }
   };
 
-  const cached = getDiagram(owner, repo, number, headSha);
+  const variant = `diagram:v2:${pickModel(req.query.mode, 'heavy')}`;
+  const cached = req.query.retry === '1' ? undefined : getGenerated(owner, repo, number, headSha, variant);
   if (cached !== undefined) {
     send('chunk', cached);
     send('done', '');
@@ -79,7 +80,7 @@ diagramRouter.get('/api/diagram/stream', (req: Request, res: Response) => {
     onChunk: (delta) => send('chunk', delta),
     onUsage: (usage) => send('usage', usage),
     onDone: (full) => {
-      setDiagram(owner, repo, number, headSha, full.trim());
+      setGenerated(owner, repo, number, headSha, variant, full.trim());
       send('done', '');
       res.end();
     },

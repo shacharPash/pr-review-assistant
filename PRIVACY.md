@@ -6,14 +6,14 @@ This describes the local application, not a hosted service. The maintainer does 
 
 | Data | Purpose and destination | Retention |
 | --- | --- | --- |
-| GitHub PR metadata, code, commit messages, author names, review comments and checks | Read with your existing local `gh` account; displayed in your browser | Server memory cache: at most 20 PR entries, a 50 MiB budget and 15 minute absolute lifetime, cleaned at least once a minute; discarded on restart |
+| GitHub PR metadata, code, commit messages, author names, review comments and checks | Read with your existing local `gh` account; displayed in your browser | Server memory cache: at most 20 PR entries, a 50 MiB budget, plus at most 20 scoped comparisons with a 25 MiB budget, and 15 minute absolute lifetime, cleaned at least once a minute; discarded on restart |
 | Draft reviews, reviewed files and last-reviewed revisions | Saved in this browser's local storage under `pra.*` | Until you clear them; submitted draft values are removed after confirmed success |
 | Theme, panel sizes, AI preference and model choice | Browser local storage under `pra.*` | Until you change or clear them |
 | PR URLs | Browser address bar for refresh/deep links | Browser history and browser backups follow your browser settings |
 | Linked Jira ticket keys, titles, status, type and description, when configured | Direct HTTPS requests to your configured Jira server, up to five tickets with a five second timeout | Included in the PR memory cache; assignee and reporter names are not requested |
 | AI input and output, only when you enable AI | PR code and metadata, and optional Jira context, sent by your local Claude CLI using its configured provider and account | Provider retention depends on that account, contract and settings; completed output is cached in process memory |
 | Credentials | `gh` and Claude keep their own authentication; optional Jira credentials are in your local `.env` | Managed by you and the CLIs; excluded from Git and browser exports |
-| Logs | Startup and operational diagnostics in your terminal; the optional macOS background agent also writes a local log | Terminal retention depends on the terminal; see the cleanup instructions below for background logs |
+| Logs | Startup and operational diagnostics in your terminal; the optional macOS background agent also writes a local log | Terminal retention depends on the terminal; background logs keep two segments of at most 5 MiB each (with permissions limited to the local user); see cleanup below |
 
 The editor, workers and fonts are served locally. The app does not fetch remote avatar images. Opening an external link deliberately connects your browser to the linked service.
 

@@ -23,11 +23,11 @@ export interface HealthReport {
 
 async function probeGH(): Promise<DependencyStatus> {
   try {
-    const { stdout } = await execFileAsync('gh', ['--version'], { encoding: 'utf8' });
+    const { stdout } = await execFileAsync('gh', ['--version'], { encoding: 'utf8', timeout: 10_000 });
     const version = stdout.split('\n')[0].trim();
     // gh auth status returns a non-zero exit if not authenticated.
     try {
-      await execFileAsync('gh', ['auth', 'status'], { encoding: 'utf8' });
+      await execFileAsync('gh', ['auth', 'status'], { encoding: 'utf8', timeout: 10_000 });
       return { name: 'gh', installed: true, authenticated: true, version, problem: null };
     } catch {
       return {
@@ -60,7 +60,7 @@ async function probeGH(): Promise<DependencyStatus> {
 
 async function probeClaude(): Promise<DependencyStatus> {
   try {
-    const { stdout } = await execFileAsync('claude', ['--version'], { encoding: 'utf8' });
+    const { stdout } = await execFileAsync('claude', ['--version'], { encoding: 'utf8', timeout: 10_000 });
     return {
       name: 'claude',
       installed: true,

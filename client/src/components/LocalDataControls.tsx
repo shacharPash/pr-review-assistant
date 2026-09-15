@@ -38,9 +38,12 @@ export function LocalDataControls() {
       <p>AI sends PR code, descriptions, commit messages and optional Jira context through your local Claude account and configured provider. Provider retention and organization policies still apply.</p>
       <p>Enable it only for repositories you are allowed to share with that provider. The diff and manual review work with AI off.</p>
       <label><input type="checkbox" checked={aiEnabled} onChange={(event) => {
-        setAIEnabled(event.target.checked);
-        // Reload stops active AI requests before applying the new choice.
-        window.location.reload();
+        try {
+          window.localStorage.setItem('pra.aiEnabled', event.target.checked ? '1' : '0');
+          setAIEnabled(event.target.checked);
+          // Reload stops active AI requests before applying the new choice.
+          window.location.reload();
+        } catch { setError('This browser cannot save the AI choice. Enable browser storage first.'); }
       }} /> Enable AI for this browser</label>
       <hr />
       <p>Drafts, reviewed files and preferences are saved in this browser until cleared. Exports contain private text; store them carefully.</p>

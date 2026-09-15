@@ -1,3 +1,4 @@
+import { usePrivacy } from '../state/privacy.js';
 import { SafeInline } from '../lib/SafeMarkdown.js';
 import { useEffect, useMemo, useState } from 'react';
 import { useStore } from '../state/store.js';
@@ -30,6 +31,7 @@ const TABS: { id: TabId; emoji: string; label: string }[] = [
 ];
 
 export function TLDRPanel() {
+  const aiEnabled = usePrivacy((s) => s.aiEnabled);
   const tldr = useStore((s) => s.tldr);
   const retry = useStore((s) => s.retryTLDR);
   const retryPersona = useStore((s) => s.retryPersona);
@@ -40,20 +42,13 @@ export function TLDRPanel() {
   const collapsed = usePrefs((s) => s.tldrCollapsed);
   const toggleTLDR = usePrefs((s) => s.toggleTLDR);
 
-  // Warm up all tabs on first load so they're ready when the user clicks
-  // between them. End on selectTab('explain') so Plain English is what
-  // they see first — it streams faster than Brief because the model
-  // doesn't need deep reasoning to write friendly prose.
+  // Start only the visible tab; collapsed and unused panels make no AI calls.
   useEffect(() => {
-    if (!bundle) return;
-    if (!personaResults.checklist) selectTab('checklist');
-    if (!personaResults.explain) selectTab('explain');
-    selectTab('explain');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bundle?.meta?.headSha]);
+    if (bundle && aiEnabled && !collapsed) selectTab(activeTab);
+  }, [bundle, aiEnabled, collapsed, activeTab, selectTab]);
 
   if (!bundle) return null;
-  if (tldr.status === 'idle') return null;
+  if (!aiEnabled) return <div className="tldr rail-section"><p>AI is off. Enable it in Local data &amp; AI to generate insights.</p><ReviewActivityPane /></div>;
 
   if (collapsed) {
     return (

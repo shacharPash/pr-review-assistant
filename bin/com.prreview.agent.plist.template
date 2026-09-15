@@ -16,6 +16,8 @@
   <dict>
     <key>NODE_ENV</key>
     <string>production</string>
+    <key>PRA_LOG_FILE</key>
+    <string>__LOG__</string>
     <key>PORT</key>
     <string>__PORT__</string>
     <key>PATH</key>
@@ -26,8 +28,8 @@
   <key>KeepAlive</key>
   <true/>
   <key>StandardOutPath</key>
-  <string>__LOG__</string>
+  <string>/dev/null</string>
   <key>StandardErrorPath</key>
-  <string>__LOG__</string>
+  <string>/dev/null</string>
 </dict>
 </plist>
