@@ -1105,6 +1105,10 @@ export const useStore = create<State>((set, get) => ({
     // the open there , after the editor for the target file has mounted ,
     // avoids racing DiffViewer's own "close composer when the file changes"
     // effect, which would otherwise clobber a composer opened here.
+    const targetFile = bundle.files.find((file) => file.path === c.file);
+    if (targetFile?.hunks.some((hunk) => hunk.noise && c.line >= hunk.newStart && c.line < hunk.newStart + hunk.newLines)) {
+      set({ showNoise: true });
+    }
     get().selectFile(c.file);
     const startLine = c.startLine && c.startLine <= c.line ? c.startLine : c.line;
     set((s) => ({

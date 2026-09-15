@@ -278,3 +278,16 @@ describe('AI feature session regressions', () => {
     expect(useStore.getState().composerTarget).toBeNull();
   });
 });
+
+
+it('reveals a hidden hunk before staging an exact AI finding', async () => {
+  await load();
+  const originalBundle = useStore.getState().bundle!;
+  useStore.setState({ bundle: { ...originalBundle, files: [{ ...file,
+    rawPatch: '@@ -1,1 +1,1 @@\n-old\n+new',
+    hunks: [{ oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, oldContent: 'old', newContent: 'new', additions: 1, deletions: 1, noise: 'whitespace-only' }],
+  }] }, showNoise: false });
+  useStore.getState().jumpToSuggestion({ file: file.path, line: 1, title: 'Finding', body: 'Review this', severity: 'bug' });
+  expect(useStore.getState().showNoise).toBe(true);
+  expect(useStore.getState().pendingReveal).toMatchObject({ path: file.path, line: 1, prefill: 'Review this' });
+});
