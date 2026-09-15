@@ -1,3 +1,4 @@
+import { SafeMarkdown, safeHref } from '../lib/SafeMarkdown.js';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { editor as MonacoEditor } from 'monaco-editor';
@@ -233,7 +234,7 @@ function ReviewThreadCard({
         {thread.comments.length > 1 && <span className="rc-count">{thread.comments.length}</span>}
         {collapsed && preview && <span className="rc-preview">{preview}</span>}
         <span className="rc-when">{formatRelative(root.createdAt)}</span>
-        <a className="rc-open" href={root.htmlUrl} target="_blank" rel="noreferrer" title="Open in GitHub">↗</a>
+        <a className="rc-open" href={safeHref(root.htmlUrl)} target="_blank" rel="noreferrer" title="Open in GitHub">↗</a>
       </div>
 
       {!collapsed && (
@@ -245,7 +246,7 @@ function ReviewThreadCard({
                 <span className="rc-name">{c.author.login.replace(/\[bot\]$/, '')}</span>
                 <span className="rc-when">{formatRelative(c.createdAt)}</span>
               </div>
-              <div className="rc-body" dangerouslySetInnerHTML={{ __html: renderMarkdownish(c.body) }} />
+              <div className="rc-body"><SafeMarkdown text={c.body} /></div>
             </div>
           ))}
 
@@ -276,62 +277,6 @@ function ReviewThreadCard({
       )}
     </div>
   );
-}
-
-/**
- * Light markdown rendering — enough to make bot comments readable without
- * pulling in a full markdown lib. Bots emit very structured HTML/markdown
- * mixes; we strip dangerous tags via escape, then re-enable the safe
- * subset (bold, italic, inline code, code fences, links, simple line
- * breaks, headings).
- */
-function renderMarkdownish(raw: string): string {
-  // Trim Cursor BugBot's "<!-- DESCRIPTION START -->" wrappers and similar
-  // HTML comments — they're just internal markers.
-  let text = raw.replace(/<!--[\s\S]*?-->/g, '');
-
-  // Strip <details> blocks' chrome but keep the inner text. Bots use them
-  // for "Additional Locations" etc.; the content is the useful bit.
-  text = text.replace(/<\/?details>/gi, '').replace(/<\/?summary>[^<]*<\/?summary>/gi, '');
-
-  // Pull out the Cursor "Fix in Cursor" image blob — it's noise inside our card.
-  text = text.replace(/<div>[\s\S]*?Fix in Web[\s\S]*?<\/div>/gi, '');
-  text = text.replace(/<picture>[\s\S]*?<\/picture>/gi, '');
-
-  // Strip raw <img> for safety + density.
-  text = text.replace(/<img\b[^>]*>/gi, '');
-
-  // HTML-escape everything we're about to render — we'll re-introduce the
-  // safe subset below.
-  const escaped = escapeHTML(text);
-
-  // Now apply small markdown.
-  let html = escaped
-    // Fenced code blocks ```lang\n...\n```
-    .replace(/```([a-zA-Z0-9_-]*)\n([\s\S]*?)\n```/g, (_, lang, code) => {
-      return `<pre class="rc-pre"><code data-lang="${lang}">${code}</code></pre>`;
-    })
-    // Inline code `…`
-    .replace(/`([^`\n]+)`/g, '<code>$1</code>')
-    // Bold **…**
-    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-    // Italic _…_
-    .replace(/(^|[^_])_([^_\n]+)_(?!\w)/g, '$1<em>$2</em>')
-    // Headings ### / ##
-    .replace(/^###\s+(.+)$/gm, '<h4 class="rc-h">$1</h4>')
-    .replace(/^##\s+(.+)$/gm, '<h3 class="rc-h">$1</h3>')
-    // Auto-link bare URLs
-    .replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g, '$1<a href="$2" target="_blank" rel="noreferrer">$2</a>')
-    // Paragraph breaks
-    .replace(/\n{2,}/g, '</p><p class="rc-p">')
-    // Single line breaks
-    .replace(/\n/g, '<br />');
-
-  return `<p class="rc-p">${html}</p>`;
-}
-
-function escapeHTML(text: string): string {
-  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 function formatRelative(iso: string): string {

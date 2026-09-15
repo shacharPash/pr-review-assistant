@@ -68,7 +68,7 @@ headlineRouter.get('/api/headline/stream', (req: Request, res: Response) => {
     },
   });
 
-  req.on('close', () => runner.abort());
+  res.on('close', () => runner.abort());
   // Headline is a light route — one short sentence. Opus adds no quality;
   // Sonnet wins on speed and cost regardless of mode.
   runner.start(bundle, { systemPrompt: HEADLINE_PROMPT, model: pickModel(req.query.mode, 'light') });

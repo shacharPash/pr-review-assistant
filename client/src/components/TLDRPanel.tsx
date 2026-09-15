@@ -1,3 +1,4 @@
+import { SafeInline } from '../lib/SafeMarkdown.js';
 import { useEffect, useMemo, useState } from 'react';
 import { useStore } from '../state/store.js';
 import { usePrefs } from '../state/preferences.js';
@@ -148,10 +149,7 @@ function BriefTab({
               <span className="insight-tag">{KIND_TAG[b.kind]}</span>
               {ref && <span className="insight-ref">{ref}</span>}
             </div>
-            <div
-              className="insight-text"
-              dangerouslySetInnerHTML={{ __html: renderRich(b.text) }}
-            />
+            <div className="insight-text"><SafeInline text={b.text} /></div>
           </div>
         );
       })}
@@ -201,11 +199,7 @@ function PersonaPaneExplain({
   return (
     <div className="persona-body explain">
       {paragraphs.map((p, i) => (
-        <p
-          key={i}
-          className="explain-paragraph"
-          dangerouslySetInnerHTML={{ __html: renderRich(p) }}
-        />
+        <p key={i} className="explain-paragraph"><SafeInline text={p} /></p>
       ))}
       {result.status === 'streaming' && <span className="cursor" />}
     </div>
@@ -255,10 +249,7 @@ function PersonaPaneChecklist({
             checked={!!checked[i]}
             onChange={(e) => setChecked((c) => ({ ...c, [i]: e.target.checked }))}
           />
-          <span
-            className="check-text"
-            dangerouslySetInnerHTML={{ __html: renderRich(item) }}
-          />
+          <span className="check-text"><SafeInline text={item} /></span>
         </label>
       ))}
       {result.status === 'streaming' && <span className="cursor" />}
@@ -364,17 +355,4 @@ function parseChecklistItems(text: string): string[] {
   }
   push();
   return out;
-}
-
-/** Inline backticks + **bold** + auto-link of bare http URLs. */
-function renderRich(text: string): string {
-  const escaped = escapeHTML(text);
-  return escaped
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
-    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-    .replace(/(^|[^"])\b(https?:\/\/[^\s<]+)/g, '$1<a href="$2" target="_blank" rel="noreferrer">$2</a>');
-}
-
-function escapeHTML(text: string): string {
-  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
