@@ -4278,7 +4278,10 @@ button { font: inherit; }
 .local-data-dialog::backdrop { background: #000a; }
 .local-data-dialog p { margin: 12px 0; }
 .local-data-dialog input { margin-right: 8px; }
-.local-data-dialog button { padding: 7px 10px; cursor: pointer; }
+.local-data-dialog button { padding: 7px 10px; cursor: pointer; color: var(--fg); background: var(--bg-card-2); border: 1px solid var(--border-strong); border-radius: var(--r-sm); font: inherit; }
+.local-data-dialog button:hover:not(:disabled) { background: var(--bg-card-hover); }
+.local-data-dialog button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.local-data-dialog button:disabled { opacity: 0.5; cursor: default; }
 .local-data-dialog a { color: var(--accent, #94bcff); }
 .local-data-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .author-chip-avatar { display: inline-flex; align-items: center; justify-content: center; }

@@ -1,3 +1,4 @@
+import { cacheGeneration, isCurrentGeneration } from '../services/cacheLifecycle.js';
 import { createHash } from 'node:crypto';
 import { parseAIReview } from '../../shared/aiReview.js';
 import { Router, type Request, type Response } from 'express';
@@ -14,6 +15,7 @@ import { fetchGuidelines } from '../services/guidelinesFetcher.js';
 export const aiReviewRouter = Router();
 
 aiReviewRouter.get('/api/ai-review/stream', async (req: Request, res: Response) => {
+  const generation = cacheGeneration();
   const owner = String(req.query.owner ?? '');
   const repo = String(req.query.repo ?? '');
   const number = Number(req.query.number);
@@ -40,7 +42,7 @@ aiReviewRouter.get('/api/ai-review/stream', async (req: Request, res: Response) 
   res.on('error', () => { closed = true; });
   res.on('close', () => { closed = true; });
   const send = (event: string, data: unknown): void => {
-    if (closed) return;
+    if (closed || !isCurrentGeneration(generation)) return;
     try {
       res.write(`event: ${event}\n`);
       res.write(`data: ${JSON.stringify(data)}\n\n`);
@@ -54,6 +56,7 @@ aiReviewRouter.get('/api/ai-review/stream', async (req: Request, res: Response) 
   let guidelines = getGuidelines(owner, repo, number, headSha);
   if (guidelines === undefined) {
     guidelines = await fetchGuidelines(owner, repo, headSha);
+    if (!isCurrentGeneration(generation) || closed) { res.end(); return; }
     setGuidelines(owner, repo, number, headSha, guidelines);
   }
   if (closed) return; // client bailed while we were fetching guidelines
@@ -73,6 +76,7 @@ aiReviewRouter.get('/api/ai-review/stream', async (req: Request, res: Response) 
     onChunk: (delta) => send('chunk', delta),
     onUsage: (usage) => send('usage', usage),
     onDone: (full) => {
+      if (!isCurrentGeneration(generation) || closed) { res.end(); return; }
       if (!parseAIReview(full)) {
         send('error', 'AI review was incomplete or malformed. Re-run to try again.');
         res.end();

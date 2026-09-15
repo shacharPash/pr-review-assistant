@@ -1,10 +1,11 @@
+import { usePrivacy } from '../state/privacy.js';
 import { useEffect, useState } from 'react';
 import { useStore } from '../state/store.js';
 
 type Size = 'XS' | 'S' | 'M' | 'L' | 'XL';
 type Complexity = 'simple' | 'moderate' | 'complex' | 'unknown';
 
-type VerdictKey = 'quick' | 'standard' | 'careful' | 'deep' | 'reviewer' | 'pending';
+type VerdictKey = 'quick' | 'standard' | 'careful' | 'deep' | 'reviewer' | 'pending' | 'size';
 
 interface Verdict {
   key: VerdictKey;
@@ -21,12 +22,14 @@ const VERDICTS: Record<VerdictKey, Verdict> = {
   careful:  { key: 'careful',  emoji: '🧐', label: 'Careful read',       level: 3,    tone: 'orange'  },
   deep:     { key: 'deep',     emoji: '🧠', label: 'Deep dive',          level: 4,    tone: 'red'     },
   reviewer: { key: 'reviewer', emoji: '🤔', label: "Reviewer's call",    level: null, tone: 'neutral' },
+  size:     { key: 'size', emoji: '📏', label: 'Size only (AI off)', level: null, tone: 'neutral' },
   pending:  { key: 'pending',  emoji: '⏳', label: 'Estimating effort…', level: null, tone: 'pending' },
 };
 
 const ALL_VERDICTS: Verdict[] = [VERDICTS.quick, VERDICTS.standard, VERDICTS.careful, VERDICTS.deep];
 
 export function ReviewEffort() {
+  const aiEnabled = usePrivacy((s) => s.aiEnabled);
   const bundle = useStore((s) => s.bundle);
   const complexityState = useStore((s) => s.complexity);
   const [helpOpen, setHelpOpen] = useState(false);
@@ -45,7 +48,7 @@ export function ReviewEffort() {
   const sized = sizeFromBundle(bundle);
   const complexity = parseComplexity(complexityState.text, complexityState.status);
   const minutes = estimateMinutes(sized);
-  const verdict = pickVerdict(sized.size, complexity, complexityState.status);
+  const verdict = aiEnabled ? pickVerdict(sized.size, complexity, complexityState.status) : VERDICTS.size;
 
   return (
     <div className={`effort-pill effort-${verdict.tone}`}>
@@ -84,7 +87,7 @@ export function ReviewEffort() {
         <>
           <div className="effort-overlay" onClick={() => setHelpOpen(false)} />
           <div className="effort-help" role="dialog" aria-label="How review effort is calculated">
-            <EffortHelp sized={sized} complexity={complexity} complexityStatus={complexityState.status} minutes={minutes} verdict={verdict} />
+            <EffortHelp sized={sized} complexity={complexity} complexityStatus={aiEnabled ? complexityState.status : 'off'} minutes={minutes} verdict={verdict} />
           </div>
         </>
       )}
@@ -109,13 +112,14 @@ function EffortHelp({ sized, complexity, complexityStatus, minutes, verdict }: H
         <div className="effort-help-section-label">For this PR</div>
         <div className="effort-help-row">
           <span>Size</span>
-          <span><strong>{sized.size}</strong> — {sized.lines} changed lines, {sized.files} file{sized.files === 1 ? '' : 's'}{sized.testFiles ? `, ${sized.testFiles} test` : ''}{sized.noiseFiles ? `, ${sized.noiseFiles} noise hidden` : ''}</span>
+          <span><strong>{sized.size}</strong>: {sized.lines} changed lines, {sized.files} file{sized.files === 1 ? '' : 's'}{sized.testFiles ? `, ${sized.testFiles} test` : ''}{sized.noiseFiles ? `, ${sized.noiseFiles} noise hidden` : ''}</span>
         </div>
         <div className="effort-help-row">
           <span>AI complexity</span>
           <span>
-            {complexityStatus === 'streaming' ? <em>estimating…</em>
-              : complexityStatus === 'error' ? <em>failed — size only</em>
+            {complexityStatus === 'off' ? <em>off; size only</em>
+              : complexityStatus === 'streaming' ? <em>estimating…</em>
+              : complexityStatus === 'error' ? <em>failed; size only</em>
               : complexity === 'unknown' ? <em>couldn't classify</em>
               : <strong>{complexity}</strong>}
           </span>
@@ -135,9 +139,9 @@ function EffortHelp({ sized, complexity, complexityStatus, minutes, verdict }: H
         <table className="effort-help-table">
           <tbody>
             <tr><td>XS</td><td>&lt; 30 lines</td></tr>
-            <tr><td>S</td><td>30 – 150 lines</td></tr>
-            <tr><td>M</td><td>150 – 500 lines</td></tr>
-            <tr><td>L</td><td>500 – 1500 lines</td></tr>
+            <tr><td>S</td><td>30 - 150 lines</td></tr>
+            <tr><td>M</td><td>150 - 500 lines</td></tr>
+            <tr><td>L</td><td>500 - 1500 lines</td></tr>
             <tr><td>XL</td><td>1500+ lines</td></tr>
           </tbody>
         </table>
@@ -167,7 +171,7 @@ function EffortHelp({ sized, complexity, complexityStatus, minutes, verdict }: H
       </div>
 
       <div className="effort-help-note">
-        Rough heuristic — recalibrates by feel. Doesn't account for language familiarity.
+        Rough heuristic. Recalibrate based on your experience. Doesn't account for language familiarity.
       </div>
     </>
   );

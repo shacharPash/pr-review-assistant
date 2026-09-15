@@ -1,3 +1,4 @@
+import { cacheGeneration, isCurrentGeneration } from '../services/cacheLifecycle.js';
 import { Router, type Request, type Response } from 'express';
 import { ClaudeRunner, buildAiChatPrompt, pickModel } from '../services/claudeRunner.js';
 import { getBundle } from '../services/cache.js';
@@ -12,6 +13,7 @@ export const aiChatRouter = Router();
  * is unique. The diff still renders even if this fails; chat is additive.
  */
 aiChatRouter.post('/api/ai-chat/stream', async (req: Request, res: Response) => {
+  const generation = cacheGeneration();
   const body = (req.body ?? {}) as Partial<AiChatRequest>;
   const owner = String(body.owner ?? '');
   const repo = String(body.repo ?? '');
@@ -56,7 +58,7 @@ aiChatRouter.post('/api/ai-chat/stream', async (req: Request, res: Response) => 
   res.on('error', () => { closed = true; });
   res.on('close', () => { closed = true; });
   const send = (event: unknown): void => {
-    if (closed) return;
+    if (closed || !isCurrentGeneration(generation)) return;
     try {
       res.write(`${JSON.stringify(event)}\n`);
     } catch {

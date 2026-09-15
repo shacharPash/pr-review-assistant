@@ -1,4 +1,3 @@
-import { clearComparisons } from '../services/comparisons.js';
 import { Router, type RequestHandler } from 'express';
 import { clearCache } from '../services/cache.js';
 
@@ -16,6 +15,5 @@ export const requireAIConsent: RequestHandler = (req, res, next) => {
 export const privacyRouter = Router();
 privacyRouter.post('/api/local-data/clear', (_req, res) => {
   clearCache();
-  clearComparisons();
   res.json({ cleared: true });
 });

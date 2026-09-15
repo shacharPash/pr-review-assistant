@@ -1,3 +1,4 @@
+import { cacheGeneration, isCurrentGeneration } from '../services/cacheLifecycle.js';
 import { Router, type Request, type Response } from 'express';
 import { ClaudeRunner, pickModel } from '../services/claudeRunner.js';
 import { getBundle, getGenerated, setGenerated, generatedIdentity } from '../services/cache.js';
@@ -31,6 +32,7 @@ Rules:
 Output the two lines. Nothing else.`;
 
 beforeAfterRouter.get('/api/before-after/stream', (req: Request, res: Response) => {
+  const generation = cacheGeneration();
   const owner = String(req.query.owner ?? '');
   const repo = String(req.query.repo ?? '');
   const number = Number(req.query.number);
@@ -57,7 +59,7 @@ beforeAfterRouter.get('/api/before-after/stream', (req: Request, res: Response) 
   res.on('error', () => { closed = true; });
   res.on('close', () => { closed = true; });
   const send = (event: string, data: unknown): void => {
-    if (closed) return;
+    if (closed || !isCurrentGeneration(generation)) return;
     try {
       res.write(`event: ${event}\n`);
       res.write(`data: ${JSON.stringify(data)}\n\n`);
@@ -79,7 +81,7 @@ beforeAfterRouter.get('/api/before-after/stream', (req: Request, res: Response) 
     onChunk: (delta) => send('chunk', delta),
     onUsage: (usage) => send('usage', usage),
     onDone: (full) => {
-      setGenerated(owner, repo, number, headSha, variant, full.trim());
+      if (isCurrentGeneration(generation)) setGenerated(owner, repo, number, headSha, variant, full.trim());
       send('done', { text: full });
       res.end();
     },
