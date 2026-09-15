@@ -5,8 +5,6 @@ export interface JiraTicket {
   type: string;
   description: string;
   url: string;
-  assignee?: string;
-  reporter?: string;
 }
 
 export interface JiraInfo {

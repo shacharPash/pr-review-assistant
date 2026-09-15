@@ -1,3 +1,4 @@
+import { BoundedCache } from './boundedCache.js';
 import type { PRBundle } from '../../shared/types.js';
 import type { PRComments } from '../../shared/reviewComments.js';
 
@@ -13,7 +14,11 @@ interface Entry {
   storedAt: number;
 }
 
-const store = new Map<string, Entry>();
+const store = new BoundedCache<Entry>();
+const cleanup = setInterval(() => store.prune(), 60_000);
+cleanup.unref();
+
+export function clearCache(): void { store.clear(); }
 
 function key(owner: string, repo: string, number: number, headSha: string): string {
   return `${owner}/${repo}:${number}:${headSha}`;
@@ -31,8 +36,8 @@ export function getBundle(
 export function setBundle(bundle: PRBundle): void {
   const { owner, repo, number, headSha } = bundle.meta;
   const k = key(owner, repo, number, headSha);
-  const existing = store.get(k);
-  store.set(k, { bundle, tldr: existing?.tldr, storedAt: Date.now() });
+  store.delete(k);
+  store.set(k, { bundle, storedAt: Date.now() });
 }
 
 export function getTLDR(
