@@ -4,6 +4,7 @@ import type { PRComments } from '../../shared/reviewComments.js';
 
 interface Entry {
   bundle: PRBundle;
+  generated?: Record<string, string>;
   tldr?: string;
   headline?: string;
   diagram?: string; // mermaid source, or "NONE"
@@ -174,4 +175,15 @@ export function setReviewComments(
   const existing = store.get(k);
   if (!existing) return;
   store.set(k, { ...existing, reviewComments: comments });
+}
+
+/** Model and prompt versions are part of every generated result's identity. */
+export function getGenerated(owner: string, repo: string, number: number, headSha: string, variant: string): string | undefined {
+  return store.get(key(owner, repo, number, headSha))?.generated?.[variant];
+}
+
+export function setGenerated(owner: string, repo: string, number: number, headSha: string, variant: string, text: string): void {
+  const k = key(owner, repo, number, headSha);
+  const entry = store.get(k);
+  if (entry) store.set(k, { ...entry, generated: { ...entry.generated, [variant]: text } });
 }

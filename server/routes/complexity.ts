@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import { ClaudeRunner, pickModel } from '../services/claudeRunner.js';
-import { getBundle, getComplexity, setComplexity } from '../services/cache.js';
+import { getBundle, getGenerated, setGenerated } from '../services/cache.js';
 
 export const complexityRouter = Router();
 
@@ -63,7 +63,8 @@ complexityRouter.get('/api/complexity/stream', (req: Request, res: Response) => 
     }
   };
 
-  const cached = getComplexity(owner, repo, number, headSha);
+  const variant = `complexity:v2:${pickModel(req.query.mode, 'light')}`;
+  const cached = req.query.retry === '1' ? undefined : getGenerated(owner, repo, number, headSha, variant);
   if (cached !== undefined) {
     send('chunk', cached);
     send('done', '');
@@ -80,7 +81,7 @@ complexityRouter.get('/api/complexity/stream', (req: Request, res: Response) => 
       const valid = ['simple', 'moderate', 'complex', 'unknown'].includes(normalized)
         ? normalized
         : 'unknown';
-      setComplexity(owner, repo, number, headSha, valid);
+      setGenerated(owner, repo, number, headSha, variant, valid);
       send('done', '');
       res.end();
     },

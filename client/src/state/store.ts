@@ -1,3 +1,4 @@
+import { isAIEnabled } from './privacy.js';
 import { requestGuard, sessionFetch, sessionStream, invalidateSession, invalidateComparison } from './session.js';
 import { create } from 'zustand';
 import { comparisonKey, prComparison, type Comparison } from '@shared/types';
@@ -120,6 +121,7 @@ interface State {
   selectFile: (path: string) => void;
   toggleNoise: () => void;
   startTLDR: () => void;
+  startDiagram: () => void;
   retryTLDR: () => void;
   fetchFullContent: (path: string) => Promise<void>;
   fetchBlame: (path: string) => Promise<void>;
@@ -195,7 +197,7 @@ type StoreSetter = (
  * mid-flight stream keeps its mode even if the picker changes.
  */
 function modeParam(): string {
-  return `&mode=${usePrefs.getState().modelPreference}`;
+  return `&mode=${usePrefs.getState().modelPreference}&aiConsent=1`;
 }
 
 function attachUsageListener(es: EventSource, set: StoreSetter): void {
@@ -210,6 +212,7 @@ function attachUsageListener(es: EventSource, set: StoreSetter): void {
 }
 
 function openComplexityStream(bundle: PRBundle, set: StoreSetter) {
+  if (!isAIEnabled()) return;
   if (complexityEventSource) {
     complexityEventSource.close();
     complexityEventSource = null;
@@ -245,6 +248,7 @@ function openComplexityStream(bundle: PRBundle, set: StoreSetter) {
 }
 
 function openBeforeAfterStream(bundle: PRBundle, set: StoreSetter) {
+  if (!isAIEnabled()) return;
   if (beforeAfterEventSource) {
     beforeAfterEventSource.close();
     beforeAfterEventSource = null;
@@ -280,6 +284,7 @@ function openBeforeAfterStream(bundle: PRBundle, set: StoreSetter) {
 }
 
 function openDiagramStream(bundle: PRBundle, set: StoreSetter) {
+  if (!isAIEnabled()) return;
   if (diagramEventSource) {
     diagramEventSource.close();
     diagramEventSource = null;
@@ -315,6 +320,7 @@ function openDiagramStream(bundle: PRBundle, set: StoreSetter) {
 }
 
 function openHeadlineStream(bundle: PRBundle, set: StoreSetter) {
+  if (!isAIEnabled()) return;
   if (headlineEventSource) {
     headlineEventSource.close();
     headlineEventSource = null;
@@ -351,7 +357,8 @@ function openHeadlineStream(bundle: PRBundle, set: StoreSetter) {
   });
 }
 
-function openTLDRStream(bundle: PRBundle, set: StoreSetter) {
+function openTLDRStream(bundle: PRBundle, set: StoreSetter, retry = false) {
+  if (!isAIEnabled()) return;
   if (tldrEventSource) {
     tldrEventSource.close();
     tldrEventSource = null;
@@ -360,7 +367,7 @@ function openTLDRStream(bundle: PRBundle, set: StoreSetter) {
     `&repo=${encodeURIComponent(bundle.meta.repo)}` +
     `&number=${bundle.meta.number}` +
     `&headSha=${bundle.meta.headSha}` +
-    modeParam();
+    modeParam() + (retry ? '&retry=1' : '');
   const es = sessionStream(url);
   tldrEventSource = es;
   set({ tldr: { text: '', status: 'streaming' } });
@@ -504,9 +511,7 @@ export const useStore = create<State>((set, get) => ({
         const shorthand = `${bundle.meta.owner}/${bundle.meta.repo}#${bundle.meta.number}`;
         window.history.replaceState(null, '', `/?pr=${encodeURIComponent(shorthand)}`);
       }
-      openTLDRStream(bundle, set);
       openHeadlineStream(bundle, set);
-      openDiagramStream(bundle, set);
       openBeforeAfterStream(bundle, set);
       openComplexityStream(bundle, set);
       // Reviewer/bot comments — non-blocking; UI shows once they arrive.
@@ -833,7 +838,12 @@ export const useStore = create<State>((set, get) => ({
 
   retryTLDR() {
     const b = get().bundle;
-    if (b) openTLDRStream(b, set);
+    if (b) openTLDRStream(b, set, true);
+  },
+
+  startDiagram() {
+    const bundle = get().bundle;
+    if (bundle) openDiagramStream(bundle, set);
   },
 
   activeTab: 'explain',
@@ -841,7 +851,11 @@ export const useStore = create<State>((set, get) => ({
 
   selectTab(tab) {
     set({ activeTab: tab });
-    if (tab === 'brief' || tab === 'activity') return;
+    if (tab === 'activity') return;
+    if (tab === 'brief') {
+      if (get().tldr.status === 'idle') get().startTLDR();
+      return;
+    }
     const existing = get().personaResults[tab];
     if (existing && (existing.status === 'streaming' || existing.status === 'done')) return;
     const bundle = get().bundle;
@@ -852,7 +866,7 @@ export const useStore = create<State>((set, get) => ({
   retryPersona(id) {
     const bundle = get().bundle;
     if (!bundle) return;
-    openPersonaStream(bundle, id, set, get);
+    openPersonaStream(bundle, id, set, get, true);
   },
 
   toggleReviewed(path) {
@@ -1045,7 +1059,9 @@ function openPersonaStream(
   id: PersonaId,
   set: StoreSetter,
   get: () => State,
+  retry = false,
 ) {
+  if (!isAIEnabled()) return;
   const existing = personaEventSources.get(id);
   if (existing) {
     existing.close();
@@ -1057,7 +1073,7 @@ function openPersonaStream(
     `&number=${bundle.meta.number}` +
     `&headSha=${bundle.meta.headSha}` +
     `&persona=${encodeURIComponent(id)}` +
-    modeParam();
+    modeParam() + (retry ? '&retry=1' : '');
   const es = sessionStream(url);
   personaEventSources.set(id, es);
   set({ personaResults: { ...get().personaResults, [id]: { text: '', status: 'streaming' } } });

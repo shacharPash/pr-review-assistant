@@ -1,3 +1,4 @@
+import { usePrivacy } from '../state/privacy.js';
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import mermaid from 'mermaid';
 import { useStore } from '../state/store.js';
@@ -57,6 +58,8 @@ function extractMermaid(text: string): string | null {
 }
 
 export function DiagramPanel() {
+  const aiEnabled = usePrivacy((s) => s.aiEnabled);
+  const startDiagram = useStore((s) => s.startDiagram);
   const diagram = useStore((s) => s.diagram);
   const theme = usePrefs((s) => s.theme);
   const [expanded, setExpanded] = useState(false);
@@ -85,7 +88,8 @@ export function DiagramPanel() {
     return () => { cancelled = true; };
   }, [source, theme]);
 
-  if (diagram.status === 'idle') return null;
+  if (!aiEnabled) return null;
+  if (diagram.status === 'idle') return <button type="button" className="diagram-panel-button" onClick={startDiagram}>Generate a diagram</button>;
   if (diagram.status === 'streaming') {
     return (
       <div className="diagram-panel-button loading">
