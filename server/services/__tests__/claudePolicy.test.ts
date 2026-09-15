@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { mkdtempSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { claudeEnv, createClaudeLauncher, type ClaudeLauncher } from '../claudePolicy.js';
@@ -39,6 +39,10 @@ describe('Claude process isolation', () => {
       DISABLE_PROMPT_CACHING: '1', CLAUDE_CODE_USE_MANTLE: '0',
       CLAUDE_CODE_ENABLE_TELEMETRY: '0', OTEL_EXPORTER_OTLP_ENDPOINT: 'https://telemetry.example.test',
       JIRA_API_TOKEN: 'must-not-inherit', GITHUB_TOKEN: 'must-not-inherit',
+      CLAUDE_CODE_CLIENT_CERT: '/synthetic/client.crt', CLAUDE_CODE_CLIENT_KEY: '/synthetic/client.key',
+      CLAUDE_CODE_CLIENT_KEY_PASSPHRASE: 'synthetic-passphrase', CLAUDE_CODE_CERT_STORE: 'system',
+      CLAUDE_CODE_SKIP_MANTLE_AUTH: '1', CLAUDE_CODE_SKIP_ANTHROPIC_AWS_AUTH: '1',
+      CLAUDE_CODE_DISABLE_MTLS_RELOAD_ON_STALE_CONNECTION: '1', CLAUDE_CODE_OAUTH_SCOPES: 'synthetic-scope',
       NODE_OPTIONS: '--require=/untrusted', CLAUDECODE: '1', CLAUDE_CODE_SESSION_ID: 'other-session',
     };
     const result = run(createClaudeLauncher({ command: fake.executable, env }));
@@ -56,6 +60,42 @@ describe('Claude process isolation', () => {
     expect(record.env).not.toHaveProperty('NODE_OPTIONS');
     expect(record.env.CLAUDE_CODE_USE_BEDROCK).toBe('1');
     expect(record.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC).toBe('1');
+    for (const key of [
+      'CLAUDE_CODE_CLIENT_CERT', 'CLAUDE_CODE_CLIENT_KEY', 'CLAUDE_CODE_CLIENT_KEY_PASSPHRASE',
+      'CLAUDE_CODE_CERT_STORE', 'CLAUDE_CODE_SKIP_MANTLE_AUTH', 'CLAUDE_CODE_SKIP_ANTHROPIC_AWS_AUTH',
+      'CLAUDE_CODE_DISABLE_MTLS_RELOAD_ON_STALE_CONNECTION', 'CLAUDE_CODE_OAUTH_SCOPES',
+    ] as const) expect(record.env[key]).toBe(env[key]);
+  });
+
+  it.each([undefined, '0', 'false'])('forces attachment preprocessing off despite inherited %s and saved user overrides', async (inherited) => {
+    // Emulate only documented settings precedence. This fake never expands a
+    // mention or reads its target; all recorded values are synthetic.
+    const fake = fixture(`const fs = require('node:fs');
+      const args = process.argv.slice(2);
+      const userSettings = JSON.parse(fs.readFileSync(process.env.HOME+'/.claude/settings.json','utf8'));
+      const settings = JSON.parse(args[args.indexOf('--settings')+1]);
+      let prompt = '';
+      process.stdin.setEncoding('utf8'); process.stdin.on('data',chunk=>prompt+=chunk);
+      process.stdin.on('end',()=>{
+        fs.writeFileSync(RECORD_PATH, JSON.stringify({
+          inherited:process.env.CLAUDE_CODE_DISABLE_ATTACHMENTS,
+          setting:settings.env.CLAUDE_CODE_DISABLE_ATTACHMENTS,
+          effective:{...process.env,...userSettings.env,...settings.env}.CLAUDE_CODE_DISABLE_ATTACHMENTS,
+          prompt,
+        }));
+        console.log('done');
+      });`);
+    mkdirSync(join(fake.dir, '.claude'));
+    writeFileSync(join(fake.dir, '.claude/settings.json'), JSON.stringify({ env: { CLAUDE_CODE_DISABLE_ATTACHMENTS: '0' } }));
+    const prompt = 'Synthetic PR text mentions @/synthetic/not-a-real-file and @~/synthetic-not-a-real-file';
+    const result = run(createClaudeLauncher({
+      command: fake.executable,
+      env: { HOME: fake.dir, CLAUDE_CODE_DISABLE_ATTACHMENTS: inherited },
+    }), prompt);
+    expect(await result.done).toBeUndefined();
+    expect(JSON.parse(readFileSync(fake.record, 'utf8'))).toEqual({
+      inherited: '1', setting: '1', effective: '1', prompt,
+    });
   });
 
   it('bounds concurrency, cancels queued work and releases the slot after abort', async () => {
