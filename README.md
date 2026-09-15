@@ -46,7 +46,7 @@ npm run install-agent    # optional headless launchd service
 npm run uninstall-agent
 ```
 
-Managed accounts may require an interactive login refresh. Use the Terminal launcher if the background service cannot authenticate; the app never falls back to weaker AI isolation flags. Background logs keep two segments of at most 5 MiB under `~/Library/Logs/pr-review-assistant.log` and `.log.1`. Re-run `install-agent` after updating to install the current background entry point.
+Managed accounts may require an interactive login refresh. Use the Terminal launcher if the background service cannot authenticate; the app never falls back to weaker AI isolation flags. Background logs keep two segments of at most 5 MiB under `~/Library/Logs/pr-review-assistant.log` and `.log.1`. Logger startup reduces oversized existing segments to their allowed tail and applies private file permissions. Re-run `install-agent` after updating to install the current background entry point.
 
 ## Optional Jira context
 
@@ -67,7 +67,7 @@ npm audit
 
 CI checks Node 22 and 24 with read-only repository permissions and pinned actions. The tests include fake CLI processes, real temporary loopback servers, comparison identities, stale responses, review drafts, text rendering and local data controls. They do not require live GitHub mutations or model calls.
 
-The server cache expires after 15 minutes, with limits of 20 PRs/50 MiB and 20 scoped comparisons/25 MiB. It is cleared on restart. Opening a PR fetches current metadata because its description, state and review decision can change without a new commit. AI cache keys include the model and prompt version. Browser drafts persist until cleared; old SHA-only drafts remain available in local data export and are not automatically assigned to an unknown repository.
+Server cache entries expire after 15 minutes, with limits of 20 PRs/50 MiB, 20 scoped comparisons/25 MiB, 100 full-file pairs/50 MiB and 100 blame results/10 MiB. Limits measure serialized cache data rather than total process memory; active requests and editor state can use additional memory. All caches are cleared on restart or through Local data & AI. Clearing also prevents requests started before deletion from caching their results. Opening a PR fetches current metadata because its description, state and review decision can change without a new commit. AI cache keys include the model and prompt version. Browser drafts persist until cleared; old SHA-only drafts remain available in local data export and are not automatically assigned to an unknown repository.
 
 ## Update and rollback
 
