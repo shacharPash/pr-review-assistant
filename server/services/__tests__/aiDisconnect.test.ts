@@ -6,7 +6,7 @@ import { ClaudeRunner } from '../claudeRunner.js';
 import { aiCommentRouter } from '../../routes/aiComment.js';
 import { tldrRouter } from '../../routes/tldr.js';
 
-vi.mock('../cache.js', () => ({ getBundle: () => ({}), getGenerated: () => undefined, setGenerated: vi.fn() }));
+vi.mock('../cache.js', () => ({ getBundle: () => ({}), getGenerated: () => undefined, setGenerated: vi.fn(), generatedIdentity: () => 'fixture' }));
 afterEach(() => { vi.restoreAllMocks(); });
 
 describe('AI browser disconnect', () => {

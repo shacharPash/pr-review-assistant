@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import { ClaudeRunner, pickModel } from '../services/claudeRunner.js';
-import { getBundle, getGenerated, setGenerated } from '../services/cache.js';
+import { getBundle, getGenerated, setGenerated, generatedIdentity } from '../services/cache.js';
 import { buildChecklistAcPrompt, findPersona } from '../../shared/personas.js';
 import { checklistSource } from '../../shared/jira.js';
 
@@ -48,7 +48,7 @@ explainRouter.get('/api/explain/stream', (req: Request, res: Response) => {
     }
   };
 
-  const variant = `explain:v2:${pickModel(req.query.mode, 'light')}:${personaId}`;
+  const variant = generatedIdentity(bundle, `explain:${personaId}`, pickModel(req.query.mode, 'light'));
   const cached = req.query.retry === '1' ? undefined : getGenerated(owner, repo, number, headSha, variant);
   if (cached) {
     send('chunk', cached);

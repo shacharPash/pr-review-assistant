@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { BoundedCache } from './boundedCache.js';
 import type { PRBundle } from '../../shared/types.js';
 import type { PRComments } from '../../shared/reviewComments.js';
@@ -186,4 +187,8 @@ export function setGenerated(owner: string, repo: string, number: number, headSh
   const k = key(owner, repo, number, headSha);
   const entry = store.get(k);
   if (entry) store.set(k, { ...entry, generated: { ...entry.generated, [variant]: text } });
+}
+
+export function generatedIdentity(bundle: PRBundle, kind: string, model: string | undefined): string {
+  return `${kind}:v2:${model ?? 'default'}:${createHash('sha256').update(JSON.stringify(bundle)).digest('hex')}`;
 }

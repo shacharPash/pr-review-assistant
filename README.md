@@ -1,151 +1,80 @@
 # PR Review Assistant
 
-A localhost web app that helps you understand a GitHub pull request *fast* — a concrete TL;DR and a real diff viewer, side by side — before you read a line of code.
+A local, single-user GitHub PR review app. Read the code in a Monaco diff, choose a commit comparison, draft inline comments, and submit a review with your own GitHub account. Optional AI helps explain the change; the human decides what to post.
 
-Runs entirely on your machine: your local `gh` CLI for GitHub, your local `claude` CLI for AI. **No API keys, no telemetry.** Your code only goes where your own `claude` CLI already sends it.
+## Start locally
 
-The server listens only on a loopback address and rejects forged Host headers, cross-origin requests, and cross-site browser API requests. This boundary matters because the API can invoke your authenticated local CLIs. Remote access is unsupported.
-
-![PR Review Assistant reviewing a real PR](docs/screenshot.png)
-
----
-
-## Quick start
+Use Node **22.12+ or 24**, a current browser, and the [GitHub CLI](https://cli.github.com/) authenticated with `gh auth login`. AI additionally needs a Claude Code CLI that supports `--safe-mode` and `CLAUDE_CODE_DISABLE_ATTACHMENTS` (tested with **2.1.272**), authenticated for a provider you are allowed to use.
 
 ```bash
-git clone https://github.com/shacharPash/pr-review-assistant.git && cd pr-review-assistant && npm start
+git clone https://github.com/shacharPash/pr-review-assistant.git
+cd pr-review-assistant
+npm start
 ```
 
-`npm start` checks your tools, installs deps, then opens `http://localhost:5173`. Paste any GitHub PR URL and hit **Open**. Already cloned it? Just `git pull && npm start`.
+Open `http://localhost:5173` and enter a GitHub.com PR URL or `owner/repo#123`. Setup uses the lockfile and starts the production build. Missing Claude does not prevent manual code review. Core commands work on supported Node platforms; the launcher, login and background-agent helpers are macOS-only.
 
-*(Missing `gh` or `claude`? The setup script and a banner in the app tell you exactly what to install — the diff still works without AI.)*
+**AI starts off.** Open **Local data & AI** to read what will be sent and enable it for this browser. The app sends prompts through your local Claude configuration, which may route to Anthropic, Bedrock, Vertex, Foundry or a custom provider. Your provider's terms and organization policy still apply.
 
----
+## What works
 
-## One click from any PR: the Chrome extension
+- Code-first side-by-side or unified diff, syntax themes, blame and surrounding context.
+- Full-PR, single-commit and since-last-review comparisons. Full files use the selected comparison's revisions, including the PR merge base. Historical comparisons are read-only for posting.
+- Conservative noise filtering with an explicit reveal control. Meaningful operation order and repeated operations remain visible.
+- Review summaries and inline drafts are isolated by repository and PR. Confirmed submissions clear only the submitted draft values. If submission outcome is uncertain, check GitHub before acknowledging and retrying.
+- Existing reviewer activity, replies and thread resolution; PR state and check status.
+- Optional AI summary, explanation and checklist. Insight tabs start when opened; diagrams are explicitly requested. Concurrent AI processes are bounded.
+- Export and delete this app's local browser data through **Local data & AI**.
 
-1. **Start the server** (leave it running while you review):
-   ```bash
-   npm run serve
-   ```
-   Keeping it in your own terminal matters: the spawned `claude` shares your
-   interactive session, so its login refreshes automatically.
+## Local security boundary
 
-   **Tip — skip the terminal:** run `npm run make-launcher` once to drop a
-   double-clickable **"PR Review Assistant.command"** on your Desktop. Drag it
-   into the Dock; from then on a double-click starts the server (no `cd`, no
-   typing). Close the window to stop.
+The server binds only to loopback. Host and full Origin checks apply before routes; browser API requests from other sites or ports are rejected, including mixed-case API paths. There is no remote-access switch. Do not expose the server through a proxy, tunnel or container mapping.
 
-   **Tip — never start it yourself:** after creating the launcher, run
-   `npm run autostart-on` once. It opens the launcher at every login (in
-   Terminal, so Claude auth still works), so the server is always up and the
-   extension just works. Disable with `npm run autostart-off`. A Terminal
-   window opens at login — minimize it and leave it running.
+The application uses your local account permissions. It does not isolate you from other processes running as the same operating-system user. AI runs without tools, MCP, prompt file attachments or saved sessions, from a neutral temporary working directory. User provider/privacy configuration and applicable managed policy remain in effect. Untrusted text is rendered as React content rather than interpolated HTML.
 
-2. **Load the extension** (one time): open `chrome://extensions`, enable
-   **Developer mode**, click **Load unpacked**, and select the `extension/`
-   folder. Click the 🧩 puzzle-piece and **pin** "PR Review Assistant".
+Read [SECURITY.md](SECURITY.md) for scope and reporting guidance, and [PRIVACY.md](PRIVACY.md) for recipients, retention, export and deletion limits. The maintainer does not operate a service receiving your review data.
 
-3. **Use it:** on any GitHub PR, click the pinned copper-bloom icon. A new tab
-   opens with the PR already loading. (Off a PR, it opens the app's landing
-   page.)
+## Chrome extension and macOS shortcuts
 
-The extension only reads the current tab's URL when you click it (`activeTab`),
-talks only to `localhost`, and never touches your code or credentials — all of
-that stays in the local server.
-
-### Optional: always-on background server
+Run `npm run serve`, then load `extension/` as an unpacked extension from `chrome://extensions`. Pin it and click it on a GitHub PR to open that PR in the local app. It reads the active tab URL on click and probes the local health endpoint. Ordinary deep links and this health probe remain supported.
 
 ```bash
-npm run install-agent     # macOS launchd; npm run uninstall-agent to remove
-```
-Runs the server in the background and starts it at login, so you never start it
-manually. **Caveat:** if your Claude is **org-managed** (enterprise), a headless
-background process can't refresh the login, so you'd have to `claude auth login`
-repeatedly — use `npm run serve` instead. The agent is ideal for **personal**
-Claude accounts. After `git pull`, re-run `npm run install-agent` to rebuild.
-
----
-
-## What you get
-
-**Understand the PR** — a left panel with everything you need to get oriented:
-- **Summary** — one-sentence headline + a **Before / After** comparison
-- **🎯 Key Points** — concrete cards naming the *core change*, the *main risk*, and *context* (per file/line)
-- **💬 Plain English** — a friendly two-paragraph explanation
-- **✅ Checklist** — things to verify before approving; built from the linked **Jira ticket's acceptance criteria** when there is one, otherwise AI-generated
-- **🤖 Activity** — summaries from other reviewers/bots (Claude Code, Cursor BugBot, SonarCloud, …)
-- A **PR status badge** in the header (Draft / Open / Merged / Closed) + the review decision
-- Collapse any panel to give the **code the full screen**
-
-**Read the code** — a real Monaco side-by-side diff:
-- Syntax highlighting + 3 themes; **git blame** gutter with age coloring
-- **Signal over noise** — files reading-ordered (code before tests); lockfiles/generated/imports-only hunks hidden by default
-- **Expand context** around any hunk without opening the whole file
-- **Commit selector** — all commits, one commit, or "since my last review"
-
-**Review** (open PRs only):
-- Inline line comments — with **✨ AI suggest-fix** and **✨ enhance-comment** helpers
-- Submit as a GitHub review (Approve / Comment / Request changes). On merged/closed PRs the review actions are replaced with a status note — no false "Ready to approve".
-
-**Speed/cost** — a **Fast / Smart** toggle (Sonnet everywhere vs. Opus where reasoning helps) and a per-session token-usage badge.
-
----
-
-## Requirements
-
-| Tool | Why | Install |
-|---|---|---|
-| Node.js 20+ | Runtime | https://nodejs.org |
-| `gh` CLI | Fetch the PR/diff, post reviews | https://cli.github.com → `gh auth login` |
-| `claude` CLI | AI summaries & suggestions | https://claude.ai/code |
-
-`npm start` verifies all three and prints fix hints if any are missing.
-
----
-
-## Optional: Jira
-
-If your PRs reference tickets like `RED-12345`, copy `.env.example` to `.env` (the setup script does this) and add:
-
-```bash
-JIRA_BASE_URL=https://your-org.atlassian.net   # clickable ticket badges
-JIRA_EMAIL=you@your-org.com                     # + fetch title/status and
-JIRA_API_TOKEN=...                              #   power the Jira-aware Checklist
+npm run make-launcher     # create a desktop .command launcher
+npm run autostart-on      # open the launcher in Terminal at login
+npm run autostart-off
+npm run install-agent    # optional headless launchd service
+npm run uninstall-agent
 ```
 
-The `.env` is gitignored. Restart after editing.
+Managed accounts may require an interactive login refresh. Use the Terminal launcher if the background service cannot authenticate; the app never falls back to weaker AI isolation flags. Background logs keep two segments of at most 5 MiB under `~/Library/Logs/pr-review-assistant.log` and `.log.1`. Re-run `install-agent` after updating to install the current background entry point.
 
----
+## Optional Jira context
 
-## How it works
+Setup creates a private, gitignored `.env` from `.env.example`. To fetch linked ticket context, set `JIRA_BASE_URL` to your Jira HTTPS origin plus `JIRA_EMAIL` and `JIRA_API_TOKEN`. Set only the base URL for clickable ticket links. Restart after changes.
 
-- **Server** (`/server`) — Node + Express (Vite middleware in dev). Wraps the `gh` and `claude` CLIs, parses diffs, streams AI output over SSE.
-- **Client** (`/client`) — React + TypeScript + Zustand; Monaco for the diff.
-- **Shared types** (`/shared`).
+At most five referenced tickets are fetched with a five second deadline. The app requests title, status, type and description, and does not request assignee/reporter names. Jira failures are shown as optional context failures. Enabling AI can send the linked ticket description to your configured AI provider for the checklist.
 
-Single command, single port, no database. PRs are cached in memory by commit SHA, so re-opening one is instant and new commits invalidate it automatically.
-
----
-
-## Scripts
+## Development and verification
 
 ```bash
-npm start        # setup + dev server (first-time friendly)
-npm run dev      # dev server on :5173 (deps already installed)
-npm run build    # production build
+npm ci
+npm run dev              # one Express + Vite process on localhost:5173
 npm run typecheck
-npm test         # unit tests (vitest)
+npm test
+npm run build
+npm audit
 ```
 
----
+CI checks Node 22 and 24 with read-only repository permissions and pinned actions. The tests include fake CLI processes, real temporary loopback servers, comparison identities, stale responses, review drafts, text rendering and local data controls. They do not require live GitHub mutations or model calls.
 
-## Privacy
+The server cache expires after 15 minutes, with limits of 20 PRs/50 MiB and 20 scoped comparisons/25 MiB. It is cleared on restart. Opening a PR fetches current metadata because its description, state and review decision can change without a new commit. AI cache keys include the model and prompt version. Browser drafts persist until cleared; old SHA-only drafts remain available in local data export and are not automatically assigned to an unknown repository.
 
-The server runs on `localhost` and opens no outbound connections beyond what `gh` and `claude` already do for you. `gh` uses your existing GitHub auth; `claude` sends prompts (including diff content) through your own Claude account — the same path as running `claude` yourself. No telemetry.
+## Update and rollback
 
----
+Stop the app before updating. In a clean checkout, record `git rev-parse HEAD`, update with `git pull --ff-only`, then run `npm ci` and `npm start`. For rollback, stop it and use a separate checkout of the recorded commit, install its lockfile and start that version. Keep uncommitted work in your development checkout; do not reset it to switch app versions. Reinstall the optional background agent for the selected checkout.
+
+Before sharing with another developer, try a representative PR with permitted accounts and confirm the selected AI provider and model. Never distribute `.env`, local exports, credentials, logs or browser data.
 
 ## License
 
-MIT — see [LICENSE](LICENSE). Issues and PRs welcome.
+Project source is [MIT](LICENSE). Dependencies keep their original licenses; see [third-party notice generation](THIRD_PARTY_NOTICES.md). The editor, workers and fonts are bundled locally. Reviewer avatars use initials; third-party bot logo images are not distributed. This project is not endorsed by its integration providers.
