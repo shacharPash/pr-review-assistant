@@ -135,6 +135,23 @@ describe('local server security', () => {
     },
   );
 
+  it('applies API metadata checks to mixed-case paths matched by Express', async () => {
+    const [crossSite, sameOrigin] = await Promise.all([
+      request('/API/pr', {
+        'sec-fetch-site': 'cross-site',
+        'sec-fetch-mode': 'no-cors',
+      }),
+      request('/Api/pr', {
+        origin: `http://localhost:${port}`,
+        'sec-fetch-site': 'same-origin',
+        'sec-fetch-mode': 'cors',
+      }),
+    ]);
+
+    expect(crossSite.status).toBe(403);
+    expect(sameOrigin.status).toBe(200);
+  });
+
   it('allows the verified extension health request', async () => {
     const response = await request('/api/health', {
       'sec-fetch-site': 'none',

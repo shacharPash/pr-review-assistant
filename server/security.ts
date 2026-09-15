@@ -65,7 +65,8 @@ function hasAllowedFetchMetadata(
   originHeader: string | undefined,
   fetchSiteHeader: string | undefined,
 ): boolean {
-  if (path !== '/api' && !path.startsWith('/api/')) return true;
+  const normalizedPath = path.toLowerCase();
+  if (normalizedPath !== '/api' && !normalizedPath.startsWith('/api/')) return true;
   if (!fetchSiteHeader) return true;
 
   const fetchSite = fetchSiteHeader.trim().toLowerCase();
@@ -73,7 +74,7 @@ function hasAllowedFetchMetadata(
   return fetchSite === 'none' &&
     !originHeader &&
     method === 'GET' &&
-    path === '/api/health';
+    normalizedPath === '/api/health';
 }
 
 export function resolveListenHost(env: NodeJS.ProcessEnv): string {
