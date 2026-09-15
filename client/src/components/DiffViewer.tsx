@@ -96,6 +96,20 @@ function PopulatedDiffViewer({ file, position }: { file: DiffFile; position: Pro
   const [otherEditor, setOtherEditor] = useState<MonacoEditor.ICodeEditor | null>(null);
 
   const handleDiffMount = (editor: MonacoEditor.IStandaloneDiffEditor) => {
+    // Detach while editor services are live, then release our retained models.
+    const disposeEditor = editor.dispose.bind(editor);
+    let disposed = false;
+    editor.dispose = () => {
+      if (disposed) return;
+      disposed = true;
+      const models = editor.getModel();
+      editor.setModel(null);
+      try { disposeEditor(); }
+      finally {
+        models?.original.dispose();
+        models?.modified.dispose();
+      }
+    };
     setCommentEditor(editor.getModifiedEditor());
     setOtherEditor(editor.getOriginalEditor());
   };
@@ -397,6 +411,8 @@ function PopulatedDiffViewer({ file, position }: { file: DiffFile; position: Pro
       ) : (
         <div className="diff-monaco">
           <DiffEditor
+            keepCurrentOriginalModel
+            keepCurrentModifiedModel
             key={`${file.path}:${hasFull ? 'full' : 'hunks'}:${viewMode}`}
             height="100%"
             original={oldContent}

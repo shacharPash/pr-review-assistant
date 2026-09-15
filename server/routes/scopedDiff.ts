@@ -1,3 +1,4 @@
+import { cacheGeneration, isCurrentGeneration } from '../services/cacheLifecycle.js';
 import { Router, type Request, type Response } from 'express';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -20,6 +21,7 @@ export const scopedDiffRouter = Router();
  * the owner/repo/headSha for the cache key).
  */
 scopedDiffRouter.get('/api/pr/scoped-diff', async (req: Request, res: Response) => {
+  const generation = cacheGeneration();
   const owner = String(req.query.owner ?? '');
   const repo = String(req.query.repo ?? '');
   const number = Number(req.query.number);
@@ -73,7 +75,7 @@ scopedDiffRouter.get('/api/pr/scoped-diff', async (req: Request, res: Response) 
     }
 
     const files = reorderForReading(annotateNoise(parseUnifiedDiff(diffRaw)));
-    rememberComparison(comparison, files);
+    if (isCurrentGeneration(generation)) rememberComparison(comparison, files);
     res.json({ files, comparison });
   } catch (err) {
     const e = err as NodeJS.ErrnoException & { stderr?: string; code?: string };
