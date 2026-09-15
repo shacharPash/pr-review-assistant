@@ -1,3 +1,4 @@
+import { cacheGeneration, isCurrentGeneration } from '../services/cacheLifecycle.js';
 import { Router, type Request, type Response } from 'express';
 import { ClaudeRunner, pickModel } from '../services/claudeRunner.js';
 import { getBundle, getGenerated, setGenerated, generatedIdentity } from '../services/cache.js';
@@ -32,6 +33,7 @@ or
 No preamble, no explanation, no commentary. Just one or the other.`;
 
 diagramRouter.get('/api/diagram/stream', (req: Request, res: Response) => {
+  const generation = cacheGeneration();
   const owner = String(req.query.owner ?? '');
   const repo = String(req.query.repo ?? '');
   const number = Number(req.query.number);
@@ -80,7 +82,7 @@ diagramRouter.get('/api/diagram/stream', (req: Request, res: Response) => {
     onChunk: (delta) => send('chunk', delta),
     onUsage: (usage) => send('usage', usage),
     onDone: (full) => {
-      setGenerated(owner, repo, number, headSha, variant, full.trim());
+      if (isCurrentGeneration(generation)) setGenerated(owner, repo, number, headSha, variant, full.trim());
       send('done', '');
       res.end();
     },

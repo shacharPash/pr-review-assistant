@@ -3,8 +3,6 @@ import type { Comparison, DiffFile, PRBundle } from '../../shared/types.js';
 import { comparisonKey, prComparison } from '../../shared/types.js';
 
 const comparisons = new BoundedCache<{ comparison: Comparison; files: DiffFile[] }>(15 * 60_000, 20, 25 * 1024 * 1024);
-const cleanup = setInterval(() => comparisons.prune(), 60_000);
-cleanup.unref();
 export function clearComparisons(): void { comparisons.clear(); }
 
 export function rememberComparison(comparison: Comparison, files: DiffFile[]) {

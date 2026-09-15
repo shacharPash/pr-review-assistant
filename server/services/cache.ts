@@ -1,3 +1,4 @@
+import { clearLocalCaches } from './cacheLifecycle.js';
 import { createHash } from 'node:crypto';
 import { BoundedCache } from './boundedCache.js';
 import type { PRBundle } from '../../shared/types.js';
@@ -17,10 +18,8 @@ interface Entry {
 }
 
 const store = new BoundedCache<Entry>();
-const cleanup = setInterval(() => store.prune(), 60_000);
-cleanup.unref();
 
-export function clearCache(): void { store.clear(); }
+export function clearCache(): void { clearLocalCaches(); }
 
 function key(owner: string, repo: string, number: number, headSha: string): string {
   return `${owner}/${repo}:${number}:${headSha}`;
