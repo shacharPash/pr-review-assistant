@@ -1,3 +1,5 @@
+import { findComparison } from '../services/comparisons.js';
+import { comparisonKey } from '../../shared/types.js';
 import { Router, type Request, type Response } from 'express';
 import { fetchFileAtRef } from '../services/fileContent.js';
 import { getBundle } from '../services/cache.js';
@@ -29,12 +31,14 @@ fileRouter.get('/api/pr/file', async (req: Request, res: Response) => {
     return res.status(404).json({ error: 'PR bundle not in cache. Fetch /api/pr first.' });
   }
 
-  const file = bundle.files.find((f) => f.path === path || f.oldPath === path);
+  const selected = findComparison(bundle, String(req.query.comparison ?? ''));
+  if (!selected) return res.status(409).json({ error: 'Comparison expired. Select the comparison again.' });
+  const file = selected.files.find((f) => f.path === path || f.oldPath === path);
   if (!file) {
     return res.status(404).json({ error: `File ${path} not in bundle.` });
   }
 
-  const cacheKey = `${owner}/${repo}:${headSha}:${path}`;
+  const cacheKey = `${comparisonKey(selected.comparison)}:${path}`;
   const cached = memo.get(cacheKey);
   if (cached) return res.json(cached);
 
@@ -48,14 +52,14 @@ fileRouter.get('/api/pr/file', async (req: Request, res: Response) => {
     }
   }
 
-  const baseSha = bundle.meta.baseSha;
+  const baseSha = selected.comparison.baseSha;
   const newPath = file.path;
   const oldPath = file.oldPath ?? file.path;
 
   const promise = (async (): Promise<FileContentResponse> => {
     const [oldContent, newContent] = await Promise.all([
-      file.status === 'added' ? Promise.resolve(null) : fetchFileAtRef(owner, repo, oldPath, baseSha),
-      file.status === 'removed' ? Promise.resolve(null) : fetchFileAtRef(owner, repo, newPath, headSha),
+      file.status === 'added' || !baseSha ? Promise.resolve(null) : fetchFileAtRef(owner, repo, oldPath, baseSha),
+      file.status === 'removed' ? Promise.resolve(null) : fetchFileAtRef(owner, repo, newPath, selected.comparison.headSha),
     ]);
     const result: FileContentResponse = { oldContent, newContent };
     memo.set(cacheKey, result);

@@ -1,3 +1,4 @@
+import { requestGuard, sessionFetch } from '../state/session.js';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { editor as MonacoEditor, IDisposable } from 'monaco-editor';
@@ -366,6 +367,11 @@ function ComposerCore({
   const [busy, setBusy] = useState<null | 'suggest' | 'enhance'>(null);
   const [start, setStart] = useState(startLine);
   const [end, setEnd] = useState(endLine);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const aiRequest = useRef<AbortController | null>(null);
+  const latest = useRef({ draft, start, end });
+  latest.current = { draft, start, end };
+  useEffect(() => () => aiRequest.current?.abort(), []);
 
   const insertSuggestion = () => {
     const original = readOriginalLines(start, end);
@@ -374,26 +380,39 @@ function ComposerCore({
   };
 
   const callAI = async (mode: 'suggest' | 'enhance') => {
+    aiRequest.current?.abort();
+    const controller = new AbortController();
+    aiRequest.current = controller;
+    const inSession = requestGuard(`inlineAI:${filePath}`, true);
+    const current = () => !controller.signal.aborted && inSession();
     setBusy(mode);
+    setAiError(null);
     try {
       const original = readOriginalLines(start, end);
-      const res = await fetch('/api/ai-comment', {
+      const res = await sessionFetch('/api/ai-comment', {
+        signal: controller.signal,
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           mode, filePath, startLine: start, endLine: end, originalCode: original, draft,
         }),
       });
+      if (!current()) return;
       if (!res.ok) {
         const err = (await res.json().catch(() => ({}))) as { error?: string };
-        setDraft((d) => d + `\n\n_AI ${mode} failed: ${err.error ?? 'unknown error'}_`);
+        if (current()) setAiError(err.error ?? 'AI request failed.');
         return;
       }
       const data = (await res.json()) as {
         text: string;
         usage?: { input: number; output: number; cacheRead: number; cacheCreation: number };
       };
+      if (!current()) return;
       if (data.usage) useStore.getState().recordUsage(data.usage);
+      if (latest.current.start !== start || latest.current.end !== end || (mode === 'enhance' && latest.current.draft !== draft)) {
+        setAiError('The draft or range changed. Run the AI action again for your current text.');
+        return;
+      }
       if (mode === 'suggest') {
         // The endpoint returns just the replacement code; wrap as suggestion.
         const block = '\n\n```suggestion\n' + data.text.trim() + '\n```\n';
@@ -402,9 +421,9 @@ function ComposerCore({
         setDraft(data.text.trim());
       }
     } catch (err) {
-      setDraft((d) => d + `\n\n_AI ${mode} failed: ${(err as Error).message}_`);
+      if (current()) setAiError((err as Error).message);
     } finally {
-      setBusy(null);
+      if (current()) setBusy(null);
     }
   };
 
@@ -438,6 +457,7 @@ function ComposerCore({
           autoFocus={!isEdit}
           rows={4}
         />
+        {aiError && <p role="alert">{aiError}</p>}
         <div className="vz-tools">
           <button
             type="button"

@@ -84,13 +84,17 @@ function runGhGraphQL(query: string, variables: Record<string, string>): Promise
     for (const [k, v] of Object.entries(variables)) {
       args.push('-f', `${k}=${v}`);
     }
-    const proc = spawn('gh', args, { stdio: ['pipe', 'pipe', 'pipe'] });
+    const proc = spawn('gh', args, { stdio: ['pipe', 'pipe', 'pipe'], timeout: 30_000, killSignal: 'SIGKILL' });
     let stdout = '';
     let stderr = '';
     proc.stdout.setEncoding('utf8');
     proc.stderr.setEncoding('utf8');
-    proc.stdout.on('data', (c: string) => { stdout += c; });
-    proc.stderr.on('data', (c: string) => { stderr += c; });
+    proc.stdout.on('data', (c: string) => {
+      stdout += c;
+      if (stdout.length > 8 * 1024 * 1024) { proc.kill('SIGKILL'); reject(new Error('GitHub output exceeded the size limit.')); }
+    });
+    proc.stderr.on('data', (c: string) => { stderr = (stderr + c).slice(-8192); });
+    proc.stdin.end();
     proc.on('error', reject);
     proc.on('close', (code) => {
       if (code === 0) resolve(stdout);
