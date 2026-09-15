@@ -25,7 +25,7 @@ reviewCommentsRouter.get('/api/pr/review-comments', async (req: Request, res: Re
   }
 
   const cached = getReviewComments(owner, repo, number, headSha);
-  if (cached) return res.json(cached);
+  if (cached && req.query.refresh !== '1') return res.json(cached);
 
   try {
     const comments = await fetchPRReviewComments(owner, repo, number);

@@ -48,6 +48,8 @@ export interface PRMeta {
   author: string;
   headSha: string;
   baseSha: string;
+  /** Base branch tip at fetch time, used to invalidate cached merge-base comparisons. */
+  baseRefSha?: string;
   url: string;
   state: 'open' | 'closed' | 'merged';
   /** Open PRs can be drafts; combined with `state` this gives the GitHub
@@ -111,4 +113,27 @@ export interface TLDR {
   text: string;
   status: 'idle' | 'streaming' | 'done' | 'error';
   error?: string;
+}
+
+/** Immutable identity of the exact trees displayed by a comparison. */
+export interface Comparison {
+  owner: string;
+  repo: string;
+  number: number;
+  prHeadSha: string;
+  baseSha: string | null;
+  headSha: string;
+  scope: 'all' | 'commit' | 'since-review';
+}
+
+export function comparisonKey(c: Comparison): string {
+  return JSON.stringify([c.owner, c.repo, c.number, c.prHeadSha, c.baseSha, c.headSha, c.scope]);
+}
+
+export function prComparison(bundle: PRBundle): Comparison {
+  return {
+    owner: bundle.meta.owner, repo: bundle.meta.repo, number: bundle.meta.number,
+    prHeadSha: bundle.meta.headSha, baseSha: bundle.meta.baseSha,
+    headSha: bundle.meta.headSha, scope: 'all',
+  };
 }
