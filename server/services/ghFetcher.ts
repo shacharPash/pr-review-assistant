@@ -39,9 +39,9 @@ export function parsePRRef(input: string): ParsedRef {
   );
 }
 
-async function runGH(args: string[]): Promise<string> {
+export async function runGH(args: string[]): Promise<string> {
   try {
-    const { stdout } = await execFileAsync('gh', args, { maxBuffer: 50 * 1024 * 1024 });
+    const { stdout } = await execFileAsync('gh', args, { timeout: 30_000, killSignal: 'SIGKILL', maxBuffer: 50 * 1024 * 1024 });
     return stdout;
   } catch (err) {
     const e = err as NodeJS.ErrnoException & { stderr?: string };
@@ -76,6 +76,7 @@ interface GHViewJSON {
 
 export interface PRRefWithSha extends ParsedRef {
   headSha: string;
+  baseSha: string;
 }
 
 export async function probeHeadSha(input: string): Promise<PRRefWithSha> {
@@ -83,10 +84,10 @@ export async function probeHeadSha(input: string): Promise<PRRefWithSha> {
   const raw = await runGH([
     'pr', 'view', String(ref.number),
     '--repo', `${ref.owner}/${ref.repo}`,
-    '--json', 'headRefOid',
+    '--json', 'headRefOid,baseRefOid',
   ]);
-  const { headRefOid } = JSON.parse(raw) as { headRefOid: string };
-  return { ...ref, headSha: headRefOid };
+  const { headRefOid, baseRefOid } = JSON.parse(raw) as { headRefOid: string; baseRefOid: string };
+  return { ...ref, headSha: headRefOid, baseSha: baseRefOid };
 }
 
 export async function fetchPR(input: string): Promise<PRBundle> {
@@ -104,7 +105,17 @@ export async function fetchPR(input: string): Promise<PRBundle> {
   // For most PRs the diff is the long pole, making Jira effectively free.
   const viewP = runGH(['pr', 'view', String(ref.number), '--repo', repoSlug, '--json', viewFields])
     .then((raw) => JSON.parse(raw) as GHViewJSON);
-  const diffP = runGH(['pr', 'diff', String(ref.number), '--repo', repoSlug]);
+  // Fetch an immutable comparison, avoiding a PR update between view and diff.
+  const comparisonP = viewP.then(async (view) => {
+    const path = `repos/${repoSlug}/compare/${view.baseRefOid}...${view.headRefOid}`;
+    const [metadata, diff] = await Promise.all([
+      runGH(['api', path]),
+      runGH(['api', '-H', 'Accept: application/vnd.github.diff', path]),
+    ]);
+    const base = (JSON.parse(metadata) as { merge_base_commit: { sha: string } }).merge_base_commit.sha;
+    if (!base) throw new GHError('GitHub did not return a comparison merge base.');
+    return { base, diff };
+  });
   const jiraP = viewP.then((view) => {
     const commitMessages = view.commits.map((c) =>
       c.messageBody ? `${c.messageHeadline}\n\n${c.messageBody}` : c.messageHeadline,
@@ -112,7 +123,7 @@ export async function fetchPR(input: string): Promise<PRBundle> {
     return collectJira(view.title, view.body ?? '', commitMessages);
   });
 
-  const [view, diffRaw, jira] = await Promise.all([viewP, diffP, jiraP]);
+  const [view, comparison, jira] = await Promise.all([viewP, comparisonP, jiraP]);
 
   const meta: PRMeta = {
     owner: ref.owner,
@@ -122,14 +133,15 @@ export async function fetchPR(input: string): Promise<PRBundle> {
     body: view.body ?? '',
     author: view.author?.login ?? 'unknown',
     headSha: view.headRefOid,
-    baseSha: view.baseRefOid,
+    baseSha: comparison.base,
+    baseRefSha: view.baseRefOid,
     url: view.url,
     state: normalizeState(view.state),
     isDraft: view.isDraft ?? false,
     reviewDecision: normalizeReviewDecision(view.reviewDecision),
   };
 
-  const files = reorderForReading(annotateNoise(parseUnifiedDiff(diffRaw)));
+  const files = reorderForReading(annotateNoise(parseUnifiedDiff(comparison.diff)));
   const commitMessages = view.commits.map((c) =>
     c.messageBody ? `${c.messageHeadline}\n\n${c.messageBody}` : c.messageHeadline,
   );

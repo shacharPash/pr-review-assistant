@@ -1,4 +1,6 @@
+import { requestGuard, sessionFetch, sessionStream, invalidateSession, invalidateComparison } from './session.js';
 import { create } from 'zustand';
+import { comparisonKey, prComparison, type Comparison } from '@shared/types';
 import type { PRBundle, DiffFile, TLDR, BlameRange } from '@shared/types';
 import type { PersonaId } from '@shared/personas';
 import type { PRComments } from '@shared/reviewComments';
@@ -7,6 +9,7 @@ import { EMPTY_USAGE, addUsage, type TokenUsage } from '@shared/usage';
 import { usePrefs } from './preferences.js';
 
 export interface FullFileContent {
+  comparisonKey?: string;
   status: 'loading' | 'ready' | 'error';
   oldContent: string | null;
   newContent: string | null;
@@ -61,12 +64,15 @@ interface State {
   /** Currently-focused range for the inline composer; null when closed. */
   composerTarget: { path: string; line: number; startLine: number } | null;
   reviewSummary: string;
-  postingReview: { status: 'idle' | 'posting' | 'done' | 'error'; message?: string; url?: string };
+  postingReview: { status: 'idle' | 'posting' | 'done' | 'error' | 'uncertain'; message?: string; url?: string };
   /** Active scope filter. 'all' = show full PR. */
   scope: SelectedScope;
   /** When set, replaces bundle.files for display. null = use bundle.files. */
   scopedFiles: DiffFile[] | null;
   scopeLoading: boolean;
+  scopeError: string | null;
+  comparison: Comparison | null;
+  acknowledgeUncertainReview: () => void;
   /** SHA we last successfully posted a review at, per (owner/repo#number). null when none. */
   lastReviewedSha: string | null;
   /** Existing review comments + summaries from other reviewers / bots. */
@@ -138,6 +144,16 @@ let beforeAfterEventSource: EventSource | null = null;
 let complexityEventSource: EventSource | null = null;
 const personaEventSources = new Map<PersonaId, EventSource>();
 
+function draftIdentity(bundle: PRBundle): string {
+  const m = bundle.meta;
+  return `${m.owner}/${m.repo}#${m.number}:${m.headSha}`;
+}
+function summaryStorageKey(bundle: PRBundle): string { return `pra.summary:${draftIdentity(bundle)}`; }
+function submissionStorageKey(bundle: PRBundle): string { return `pra.submission:${draftIdentity(bundle)}`; }
+function afterDraftEdit(posting: State['postingReview']): State['postingReview'] {
+  return posting.status === 'posting' || posting.status === 'uncertain' ? posting : { status: 'idle' };
+}
+
 function reviewedStorageKey(headSha: string): string {
   return `pra.reviewed:${headSha}`;
 }
@@ -203,7 +219,7 @@ function openComplexityStream(bundle: PRBundle, set: StoreSetter) {
     `&number=${bundle.meta.number}` +
     `&headSha=${bundle.meta.headSha}` +
     modeParam();
-  const es = new EventSource(url);
+  const es = sessionStream(url);
   complexityEventSource = es;
   set({ complexity: { text: '', status: 'streaming' } });
   attachUsageListener(es, set);
@@ -238,7 +254,7 @@ function openBeforeAfterStream(bundle: PRBundle, set: StoreSetter) {
     `&number=${bundle.meta.number}` +
     `&headSha=${bundle.meta.headSha}` +
     modeParam();
-  const es = new EventSource(url);
+  const es = sessionStream(url);
   beforeAfterEventSource = es;
   set({ beforeAfter: { text: '', status: 'streaming' } });
   attachUsageListener(es, set);
@@ -273,7 +289,7 @@ function openDiagramStream(bundle: PRBundle, set: StoreSetter) {
     `&number=${bundle.meta.number}` +
     `&headSha=${bundle.meta.headSha}` +
     modeParam();
-  const es = new EventSource(url);
+  const es = sessionStream(url);
   diagramEventSource = es;
   set({ diagram: { text: '', status: 'streaming' } });
   attachUsageListener(es, set);
@@ -308,7 +324,7 @@ function openHeadlineStream(bundle: PRBundle, set: StoreSetter) {
     `&number=${bundle.meta.number}` +
     `&headSha=${bundle.meta.headSha}` +
     modeParam();
-  const es = new EventSource(url);
+  const es = sessionStream(url);
   headlineEventSource = es;
   set({ headline: { text: '', status: 'streaming' } });
   attachUsageListener(es, set);
@@ -345,7 +361,7 @@ function openTLDRStream(bundle: PRBundle, set: StoreSetter) {
     `&number=${bundle.meta.number}` +
     `&headSha=${bundle.meta.headSha}` +
     modeParam();
-  const es = new EventSource(url);
+  const es = sessionStream(url);
   tldrEventSource = es;
   set({ tldr: { text: '', status: 'streaming' } });
   attachUsageListener(es, set);
@@ -404,6 +420,8 @@ export const useStore = create<State>((set, get) => ({
   scope: { kind: 'all', label: 'All commits' },
   scopedFiles: null,
   scopeLoading: false,
+  scopeError: null,
+  comparison: null,
   lastReviewedSha: null,
   reviewComments: null,
   reviewCommentsStatus: 'idle',
@@ -414,7 +432,11 @@ export const useStore = create<State>((set, get) => ({
   tokenUsage: EMPTY_USAGE,
 
   async loadPR(ref) {
+    invalidateSession();
+    const current = requestGuard('loadPR');
     set({
+      bundle: null, activeFilePath: null, comparison: null,
+      lineComments: {}, composerTarget: null, reviewSummary: '',
       loading: true,
       error: null,
       tldr: emptyTLDR,
@@ -432,6 +454,7 @@ export const useStore = create<State>((set, get) => ({
       scope: { kind: 'all', label: 'All commits' },
       scopedFiles: null,
       scopeLoading: false,
+      scopeError: null,
       lastReviewedSha: null,
       reviewComments: null,
       reviewCommentsStatus: 'idle',
@@ -442,19 +465,20 @@ export const useStore = create<State>((set, get) => ({
       tokenUsage: EMPTY_USAGE,
     });
     try {
-      const res = await fetch(`/api/pr?ref=${encodeURIComponent(ref)}`);
+      const res = await sessionFetch(`/api/pr?ref=${encodeURIComponent(ref)}`);
       const data = await res.json();
+      if (!current()) return;
       if (!res.ok) {
         set({ loading: false, error: { message: data.error ?? 'Failed', detail: data.detail } });
         return;
       }
       const bundle = data as PRBundle;
-      const firstVisible = bundle.files.find((f) => !f.noise) ?? bundle.files[0];
+      const firstVisible = bundle.files.find((f) => get().showNoise || !f.noise);
       // Restore reviewed + comments scoped to this headSha (resets if PR has new commits).
-      const reviewed = readJSON<Record<string, boolean>>(reviewedStorageKey(bundle.meta.headSha), {});
-      const comments = readJSON<Record<string, string>>(commentsStorageKey(bundle.meta.headSha), {});
+      const reviewed = readJSON<Record<string, boolean>>(reviewedStorageKey(draftIdentity(bundle)), {});
+      const comments = readJSON<Record<string, string>>(commentsStorageKey(draftIdentity(bundle)), {});
       const lineComments = readJSON<Record<string, Record<number, LineComment>>>(
-        lineCommentsStorageKey(bundle.meta.headSha),
+        lineCommentsStorageKey(draftIdentity(bundle)),
         {},
       );
       const lastReviewedSha = readJSON<string | null>(
@@ -468,6 +492,9 @@ export const useStore = create<State>((set, get) => ({
         reviewed,
         comments,
         lineComments,
+        reviewSummary: readJSON<string>(summaryStorageKey(bundle), ''),
+        postingReview: readJSON<State['postingReview']>(submissionStorageKey(bundle), { status: 'idle' }),
+        comparison: prComparison(bundle),
         lastReviewedSha,
       });
       // Reflect the loaded PR in the URL so refresh / share-link both work.
@@ -491,22 +518,27 @@ export const useStore = create<State>((set, get) => ({
         get().fetchBlame(firstVisible.path);
       }
     } catch (err) {
+      if (!current()) return;
       set({ loading: false, error: { message: (err as Error).message } });
     }
   },
 
   async selectScope(scope) {
+    invalidateComparison();
+    const current = requestGuard('selectScope', true);
     const { bundle } = get();
     if (!bundle) return;
 
+    set({ fullContent: {}, blame: {}, hunkExpansions: {}, composerTarget: null,
+      activeFilePath: null, comparison: null, error: null, scopeError: null });
     if (scope.kind === 'all') {
-      set({ scope, scopedFiles: null, scopeLoading: false });
-      const firstVisible = bundle.files.find((f) => !f.noise) ?? bundle.files[0];
-      if (firstVisible) set({ activeFilePath: firstVisible.path });
+      set({ scope, scopedFiles: null, scopeLoading: false, comparison: prComparison(bundle) });
+      const firstVisible = bundle.files.find((f) => get().showNoise || !f.noise);
+      if (firstVisible) get().selectFile(firstVisible.path);
       return;
     }
 
-    set({ scope, scopeLoading: true });
+    set({ scope, scopeLoading: true, scopedFiles: [] });
     try {
       const params = new URLSearchParams({
         owner: bundle.meta.owner,
@@ -524,24 +556,28 @@ export const useStore = create<State>((set, get) => ({
         params.set('kind', 'range');
         params.set('base', scope.baseSha);
       }
-      const res = await fetch(`/api/pr/scoped-diff?${params}`);
+      const res = await sessionFetch(`/api/pr/scoped-diff?${params}`);
       const data = await res.json();
+      if (!current()) return;
       if (!res.ok) {
         set({
           scopeLoading: false,
-          error: { message: data.error ?? 'Failed to scope diff', detail: data.detail },
+          scopeError: data.error ?? 'Failed to load comparison. Select All commits to continue.',
         });
         return;
       }
       const files = data.files as DiffFile[];
-      const firstVisible = files.find((f) => !f.noise) ?? files[0];
+      const firstVisible = files.find((f) => get().showNoise || !f.noise);
       set({
         scopedFiles: files,
+        comparison: data.comparison as Comparison,
         scopeLoading: false,
         activeFilePath: firstVisible?.path ?? null,
       });
+      if (firstVisible) get().selectFile(firstVisible.path);
     } catch (err) {
-      set({ scopeLoading: false, error: { message: (err as Error).message } });
+      if (!current()) return;
+      set({ scopeLoading: false, scopeError: (err as Error).message });
     }
   },
 
@@ -581,6 +617,7 @@ export const useStore = create<State>((set, get) => ({
   },
 
   async fetchReviewComments() {
+    const current = requestGuard('fetchReviewComments', false);
     const { bundle } = get();
     if (!bundle) return;
     set({ reviewCommentsStatus: 'loading', reviewCommentsError: undefined });
@@ -588,9 +625,10 @@ export const useStore = create<State>((set, get) => ({
       const url = `/api/pr/review-comments?owner=${encodeURIComponent(bundle.meta.owner)}` +
         `&repo=${encodeURIComponent(bundle.meta.repo)}` +
         `&number=${bundle.meta.number}` +
-        `&headSha=${bundle.meta.headSha}`;
-      const res = await fetch(url);
+        `&headSha=${bundle.meta.headSha}&refresh=1`;
+      const res = await sessionFetch(url);
       const data = await res.json();
+      if (!current()) return;
       if (!res.ok) {
         set({
           reviewCommentsStatus: 'error',
@@ -600,6 +638,7 @@ export const useStore = create<State>((set, get) => ({
       }
       set({ reviewComments: data as PRComments, reviewCommentsStatus: 'ready' });
     } catch (err) {
+      if (!current()) return;
       set({
         reviewCommentsStatus: 'error',
         reviewCommentsError: (err as Error).message,
@@ -608,11 +647,12 @@ export const useStore = create<State>((set, get) => ({
   },
 
   async replyToThread(threadId, inReplyTo, body) {
+    const current = requestGuard('replyToThread' + ':' + threadId, false);
     const { bundle } = get();
     if (!bundle) return;
     set((s) => ({ threadActions: { ...s.threadActions, [threadId]: { status: 'pending' } } }));
     try {
-      const res = await fetch('/api/pr/review-comments/reply', {
+      const res = await sessionFetch('/api/pr/review-comments/reply', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -622,12 +662,14 @@ export const useStore = create<State>((set, get) => ({
         }),
       });
       const data = await res.json();
+      if (!current()) return;
       if (!res.ok || !data.ok) throw new Error(data.error ?? 'Reply failed.');
       set((s) => ({
         reviewComments: data.comments as PRComments,
         threadActions: { ...s.threadActions, [threadId]: { status: 'idle' } },
       }));
     } catch (err) {
+      if (!current()) return;
       set((s) => ({
         threadActions: { ...s.threadActions, [threadId]: { status: 'error', message: (err as Error).message } },
       }));
@@ -635,11 +677,12 @@ export const useStore = create<State>((set, get) => ({
   },
 
   async setThreadResolved(threadId, resolved) {
+    const current = requestGuard('setThreadResolved' + ':' + threadId, false);
     const { bundle } = get();
     if (!bundle) return;
     set((s) => ({ threadActions: { ...s.threadActions, [threadId]: { status: 'pending' } } }));
     try {
-      const res = await fetch('/api/pr/review-comments/resolve', {
+      const res = await sessionFetch('/api/pr/review-comments/resolve', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -649,12 +692,14 @@ export const useStore = create<State>((set, get) => ({
         }),
       });
       const data = await res.json();
+      if (!current()) return;
       if (!res.ok || !data.ok) throw new Error(data.error ?? 'Resolve failed.');
       set((s) => ({
         reviewComments: data.comments as PRComments,
         threadActions: { ...s.threadActions, [threadId]: { status: 'idle' } },
       }));
     } catch (err) {
+      if (!current()) return;
       set((s) => ({
         threadActions: { ...s.threadActions, [threadId]: { status: 'error', message: (err as Error).message } },
       }));
@@ -666,6 +711,7 @@ export const useStore = create<State>((set, get) => ({
   },
 
   async fetchChecks() {
+    const current = requestGuard('fetchChecks', false);
     const { bundle } = get();
     if (!bundle) return;
     set({ checks: { status: 'loading', runs: [] } });
@@ -673,19 +719,22 @@ export const useStore = create<State>((set, get) => ({
       const url = `/api/pr/checks?owner=${encodeURIComponent(bundle.meta.owner)}` +
         `&repo=${encodeURIComponent(bundle.meta.repo)}` +
         `&number=${bundle.meta.number}`;
-      const res = await fetch(url);
+      const res = await sessionFetch(url);
       const data = await res.json();
+      if (!current()) return;
       if (!res.ok) {
         set({ checks: { status: 'error', runs: [], error: data.error ?? 'Failed to load checks.' } });
         return;
       }
       set({ checks: { status: 'ready', runs: (data.runs ?? []) as CheckRun[] } });
     } catch (err) {
+      if (!current()) return;
       set({ checks: { status: 'error', runs: [], error: (err as Error).message } });
     }
   },
 
   selectFile(path) {
+    if (!selectDisplayFiles(get()).some((f) => f.path === path && (get().showNoise || !f.noise))) return;
     set({ activeFilePath: path });
     if (!get().fullContent[path]) get().fetchFullContent(path);
     if (!get().blame[path]) get().fetchBlame(path);
@@ -693,31 +742,37 @@ export const useStore = create<State>((set, get) => ({
 
   async fetchBlame(path) {
     const { bundle, blame } = get();
-    if (!bundle) return;
+    if (!bundle || !get().comparison || get().scopeLoading) return;
+    const identity = comparisonKey(get().comparison!);
     if (blame[path]?.status === 'ready' || blame[path]?.status === 'loading') return;
+    const current = requestGuard('fetchBlame' + ':' + path, true);
     set({ blame: { ...get().blame, [path]: { status: 'loading', ranges: [] } } });
     try {
       const url = `/api/blame?owner=${encodeURIComponent(bundle.meta.owner)}` +
         `&repo=${encodeURIComponent(bundle.meta.repo)}` +
         `&number=${bundle.meta.number}` +
         `&headSha=${bundle.meta.headSha}` +
-        `&path=${encodeURIComponent(path)}`;
-      const res = await fetch(url);
+        `&path=${encodeURIComponent(path)}&comparison=${encodeURIComponent(identity)}`;
+      const res = await sessionFetch(url);
       const data = await res.json();
+      if (!current()) return;
       if (!res.ok) {
         set({ blame: { ...get().blame, [path]: { status: 'error', ranges: [], error: data.error } } });
         return;
       }
       set({ blame: { ...get().blame, [path]: { status: 'ready', ranges: data.ranges ?? [] } } });
     } catch (err) {
+      if (!current()) return;
       set({ blame: { ...get().blame, [path]: { status: 'error', ranges: [], error: (err as Error).message } } });
     }
   },
 
   async fetchFullContent(path) {
     const { bundle, fullContent } = get();
-    if (!bundle) return;
+    if (!bundle || !get().comparison || get().scopeLoading) return;
+    const identity = comparisonKey(get().comparison!);
     if (fullContent[path]?.status === 'ready' || fullContent[path]?.status === 'loading') return;
+    const current = requestGuard('fetchFullContent' + ':' + path, true);
 
     set({
       fullContent: {
@@ -731,9 +786,10 @@ export const useStore = create<State>((set, get) => ({
         `&repo=${encodeURIComponent(bundle.meta.repo)}` +
         `&number=${bundle.meta.number}` +
         `&headSha=${bundle.meta.headSha}` +
-        `&path=${encodeURIComponent(path)}`;
-      const res = await fetch(url);
+        `&path=${encodeURIComponent(path)}&comparison=${encodeURIComponent(identity)}`;
+      const res = await sessionFetch(url);
       const data = await res.json();
+      if (!current()) return;
       if (!res.ok) {
         set({
           fullContent: {
@@ -746,10 +802,11 @@ export const useStore = create<State>((set, get) => ({
       set({
         fullContent: {
           ...get().fullContent,
-          [path]: { status: 'ready', oldContent: data.oldContent, newContent: data.newContent },
+          [path]: { status: 'ready', comparisonKey: identity, oldContent: data.oldContent, newContent: data.newContent },
         },
       });
     } catch (err) {
+      if (!current()) return;
       set({
         fullContent: {
           ...get().fullContent,
@@ -760,7 +817,13 @@ export const useStore = create<State>((set, get) => ({
   },
 
   toggleNoise() {
-    set({ showNoise: !get().showNoise });
+    const showNoise = !get().showNoise;
+    set({ showNoise });
+    const visible = selectDisplayFiles(get()).filter((f) => showNoise || !f.noise);
+    if (!visible.some((f) => f.path === get().activeFilePath)) {
+      set({ activeFilePath: null, composerTarget: null });
+      if (visible[0]) get().selectFile(visible[0].path);
+    }
   },
 
   startTLDR() {
@@ -798,7 +861,7 @@ export const useStore = create<State>((set, get) => ({
     const next = { ...reviewed, [path]: !reviewed[path] };
     if (!next[path]) delete next[path];
     set({ reviewed: next });
-    writeJSON(reviewedStorageKey(bundle.meta.headSha), next);
+    writeJSON(reviewedStorageKey(draftIdentity(bundle)), next);
   },
 
   setComment(path, body) {
@@ -807,8 +870,8 @@ export const useStore = create<State>((set, get) => ({
     const next = { ...comments };
     if (body.trim()) next[path] = body;
     else delete next[path];
-    set({ comments: next });
-    writeJSON(commentsStorageKey(bundle.meta.headSha), next);
+    set({ comments: next, postingReview: afterDraftEdit(get().postingReview) });
+    writeJSON(commentsStorageKey(draftIdentity(bundle)), next);
   },
 
   setLineComment(path, line, body, startLine) {
@@ -826,8 +889,8 @@ export const useStore = create<State>((set, get) => ({
     }
     if (Object.keys(forFile).length === 0) delete lineComments[path];
     else lineComments[path] = forFile;
-    set({ lineComments });
-    writeJSON(lineCommentsStorageKey(bundle.meta.headSha), lineComments);
+    set({ lineComments, postingReview: afterDraftEdit(get().postingReview) });
+    writeJSON(lineCommentsStorageKey(draftIdentity(bundle)), lineComments);
   },
 
   removeLineComment(path, line) {
@@ -835,6 +898,7 @@ export const useStore = create<State>((set, get) => ({
   },
 
   openComposer(path, startLine, endLine) {
+    if (get().scope.kind !== 'all' || get().scopeLoading) return;
     set({
       composerTarget: {
         path,
@@ -849,12 +913,28 @@ export const useStore = create<State>((set, get) => ({
   },
 
   setReviewSummary(text) {
-    set({ reviewSummary: text });
+    const bundle = get().bundle;
+    if (!bundle) return;
+    set({ reviewSummary: text, postingReview: afterDraftEdit(get().postingReview) });
+    writeJSON(summaryStorageKey(bundle), text);
+  },
+
+  acknowledgeUncertainReview() {
+    const bundle = get().bundle;
+    if (!bundle || get().postingReview.status !== 'uncertain') return;
+    writeJSON(submissionStorageKey(bundle), { status: 'idle' });
+    set({ postingReview: { status: 'idle' } });
+    get().fetchReviewComments();
   },
 
   async postReview(event) {
     const { bundle, comments, lineComments, reviewSummary } = get();
-    if (!bundle) return;
+    if (!bundle || get().postingReview.status === 'posting' || get().postingReview.status === 'uncertain') return;
+    if (get().scope.kind !== 'all' || get().scopeLoading) {
+      set({ postingReview: { status: 'error', message: 'Return to All commits to submit a review of the current PR.' } });
+      return;
+    }
+    const current = requestGuard('postReview');
 
     // Build inline comments list from lineComments map.
     const inline: {
@@ -885,9 +965,12 @@ export const useStore = create<State>((set, get) => ({
       return;
     }
 
+    const uncertain: State['postingReview'] = { status: 'uncertain',
+      message: 'Submission could not be confirmed. Check this PR on GitHub before submitting again.', url: bundle.meta.url };
+    writeJSON(submissionStorageKey(bundle), uncertain);
     set({ postingReview: { status: 'posting' } });
     try {
-      const res = await fetch('/api/review', {
+      const res = await sessionFetch('/api/review', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -902,21 +985,57 @@ export const useStore = create<State>((set, get) => ({
       });
       const data = await res.json();
       if (!res.ok) {
-        set({
-          postingReview: { status: 'error', message: data.error ?? 'Failed to post.', url: undefined },
-        });
+        const status: State['postingReview'] = res.status >= 400 && res.status < 500
+          ? { status: 'error', message: data.error ?? 'Review rejected.' } : uncertain;
+        writeJSON(submissionStorageKey(bundle), status);
+        if (current()) set({ postingReview: status });
         return;
       }
+      if (typeof data.id !== 'number') throw new Error('Missing submission confirmation.');
+      // Read persisted values so navigation and edits during flight are preserved.
+      const id = draftIdentity(bundle);
+      const remainingComments = { ...(current() ? get().comments : readJSON<Record<string, string>>(commentsStorageKey(id), {})) };
+      for (const [path, body] of Object.entries(comments)) {
+        if (remainingComments[path] === body) delete remainingComments[path];
+      }
+      const remainingLines = structuredClone(current() ? get().lineComments : readJSON<State['lineComments']>(lineCommentsStorageKey(id), {}));
+      for (const [path, lines] of Object.entries(lineComments)) {
+        for (const [line, entry] of Object.entries(lines)) {
+          if (JSON.stringify(remainingLines[path]?.[Number(line)]) === JSON.stringify(entry)) delete remainingLines[path][Number(line)];
+        }
+        if (remainingLines[path] && !Object.keys(remainingLines[path]).length) delete remainingLines[path];
+      }
+      const savedSummary = current() ? get().reviewSummary : readJSON<string>(summaryStorageKey(bundle), '');
+      const remainingSummary = savedSummary === reviewSummary ? '' : savedSummary;
+      writeJSON(commentsStorageKey(id), remainingComments);
+      writeJSON(lineCommentsStorageKey(id), remainingLines);
+      writeJSON(summaryStorageKey(bundle), remainingSummary);
+      writeJSON(submissionStorageKey(bundle), { status: 'idle' });
       writeJSON(
         lastReviewedShaKey(bundle.meta.owner, bundle.meta.repo, bundle.meta.number),
         bundle.meta.headSha,
       );
+      if (!current()) {
+        // A user may have revisited this exact draft while the old response
+        // was queued. Reflect the confirmed clearing without touching a
+        // different PR or a newer submission's status.
+        const active = get().bundle;
+        if (active && draftIdentity(active) === id) {
+          set({ comments: remainingComments, lineComments: remainingLines, reviewSummary: remainingSummary,
+            ...(get().postingReview.status === 'uncertain' ? { postingReview: { status: 'idle' as const } } : {}) });
+        }
+        return;
+      }
+      const hasEdits = Object.keys(remainingComments).length || Object.keys(remainingLines).length || remainingSummary;
       set({
-        postingReview: { status: 'done', message: 'Posted.', url: data.url },
+        comments: remainingComments, lineComments: remainingLines, reviewSummary: remainingSummary,
+        postingReview: hasEdits ? { status: 'idle', message: 'Review posted. New edits remain pending.' } : { status: 'done', message: 'Posted.', url: data.url },
         lastReviewedSha: bundle.meta.headSha,
       });
+      get().fetchReviewComments();
     } catch (err) {
-      set({ postingReview: { status: 'error', message: (err as Error).message } });
+      if (!current()) return;
+      set({ postingReview: uncertain });
     }
   },
 }));
@@ -939,7 +1058,7 @@ function openPersonaStream(
     `&headSha=${bundle.meta.headSha}` +
     `&persona=${encodeURIComponent(id)}` +
     modeParam();
-  const es = new EventSource(url);
+  const es = sessionStream(url);
   personaEventSources.set(id, es);
   set({ personaResults: { ...get().personaResults, [id]: { text: '', status: 'streaming' } } });
   attachUsageListener(es, set);

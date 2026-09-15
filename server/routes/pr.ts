@@ -11,10 +11,10 @@ prRouter.get('/api/pr', async (req: Request, res: Response) => {
   }
 
   try {
-    const { owner, repo, number, headSha } = await probeHeadSha(input);
+    const { owner, repo, number, headSha, baseSha } = await probeHeadSha(input);
 
     const cached = getBundle(owner, repo, number, headSha);
-    if (cached) return res.json(cached);
+    if (cached && cached.meta.baseRefSha === baseSha) return res.json(cached);
 
     const bundle = await fetchPR(input);
     setBundle(bundle);

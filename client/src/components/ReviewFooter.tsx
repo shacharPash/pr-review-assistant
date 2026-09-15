@@ -19,6 +19,8 @@ export function ReviewFooter() {
   const setReviewSummary = useStore((s) => s.setReviewSummary);
   const posting = useStore((s) => s.postingReview);
   const postReview = useStore((s) => s.postReview);
+  const historical = useStore((s) => s.scope.kind !== 'all' || s.scopeLoading);
+  const acknowledge = useStore((s) => s.acknowledgeUncertainReview);
   const bundle = useStore((s) => s.bundle);
   const selectFile = useStore((s) => s.selectFile);
   const removeLineComment = useStore((s) => s.removeLineComment);
@@ -29,14 +31,14 @@ export function ReviewFooter() {
   if (!bundle) return null;
 
   // A merged or closed PR can't be approved / have changes requested, so the
-  // "Ready to approve" CTA is wrong there. Show a calm status note instead —
+  // "Ready to approve" CTA is wrong there. Show a calm status note instead :
   // the reviewer is reading it after the fact, not reviewing it.
   if (bundle.meta.state === 'merged' || bundle.meta.state === 'closed') {
     const merged = bundle.meta.state === 'merged';
     return (
       <div className={`review-footer terminal-state ${merged ? 'merged' : 'closed'}`}>
         <span className="terminal-state-label">
-          {merged ? '🟣 This PR is merged' : '🔴 This PR is closed'} — review actions don’t apply.
+          {merged ? '🟣 This PR is merged' : '🔴 This PR is closed'} : review actions don’t apply.
         </span>
         <a href={bundle.meta.url} target="_blank" rel="noreferrer" className="link-btn">
           View on GitHub →
@@ -46,7 +48,7 @@ export function ReviewFooter() {
   }
 
   // Flatten all pending comments so we can both count them accurately AND
-  // show the user exactly where each one lives — fixes the "1 comment but
+  // show the user exactly where each one lives : fixes the "1 comment but
   // I can't find it" puzzle when an entry survives from a previous PR.
   const pending: PendingComment[] = [];
   for (const [path, perLine] of Object.entries(lineComments)) {
@@ -71,7 +73,8 @@ export function ReviewFooter() {
 
   const isPosting = posting.status === 'posting';
   const isDone = posting.status === 'done';
-  const isError = posting.status === 'error';
+  const isError = posting.status === 'error' || posting.status === 'uncertain';
+  const blocked = isPosting || historical || posting.status === 'uncertain';
 
   // Color hint: when there are comments, lean red (suggests changes);
   // when there are none, lean green (suggests approve). Neutral while
@@ -85,7 +88,7 @@ export function ReviewFooter() {
           <span className="review-cta-emoji">{totalNotes === 0 ? '✅' : '📝'}</span>
           <span className="review-cta-text">
             {totalNotes === 0
-              ? 'Ready to approve →'
+              ? 'Review and submit →'
               : `Submit review (${totalNotes} comment${totalNotes === 1 ? '' : 's'})`}
           </span>
           <span className="review-cta-arrow">→</span>
@@ -125,16 +128,23 @@ export function ReviewFooter() {
           </div>
           <textarea
             className="review-summary"
+            aria-label="Overall review summary"
             value={reviewSummary}
             onChange={(e) => setReviewSummary(e.target.value)}
             placeholder="Overall review summary (optional)…"
             rows={2}
           />
+          <div className="review-meta">Destination: {bundle.meta.owner}/{bundle.meta.repo}#{bundle.meta.number} at {bundle.meta.headSha.slice(0, 7)}</div>
+          {historical && <p role="status">Return to All commits before submitting.</p>}
+          <PendingList pending={pending} onJump={selectFile} onDelete={(p) => {
+            if (p.kind === 'inline' && p.line != null) removeLineComment(p.path, p.line);
+            else setComment(p.path, '');
+          }} />
           <div className="review-actions big">
             <button
               className="review-btn-big approve"
               onClick={() => submit('APPROVE')}
-              disabled={isPosting}
+              disabled={blocked}
               title="Approve this PR"
             >
               <span className="rb-emoji">✅</span>
@@ -143,7 +153,7 @@ export function ReviewFooter() {
             <button
               className="review-btn-big comment"
               onClick={() => submit('COMMENT')}
-              disabled={isPosting || (totalNotes === 0 && !reviewSummary.trim())}
+              disabled={blocked || (totalNotes === 0 && !reviewSummary.trim())}
               title="Submit as a comment-only review"
             >
               <span className="rb-emoji">💬</span>
@@ -152,7 +162,7 @@ export function ReviewFooter() {
             <button
               className="review-btn-big changes"
               onClick={() => submit('REQUEST_CHANGES')}
-              disabled={isPosting}
+              disabled={blocked}
               title="Request changes"
             >
               <span className="rb-emoji">🛑</span>
@@ -168,6 +178,10 @@ export function ReviewFooter() {
       {isError && (
         <div className="post-status error" title={posting.message}>
           {posting.message}
+          {posting.status === 'uncertain' && <>
+            <a href={bundle.meta.url} target="_blank" rel="noreferrer">Check submitted reviews on GitHub</a>
+            <button type="button" onClick={acknowledge}>I checked GitHub and reconciled these drafts</button>
+          </>}
         </div>
       )}
       {isDone && (
@@ -178,6 +192,7 @@ export function ReviewFooter() {
               View review on GitHub →
             </a>
           )}
+          <button type="button" onClick={() => { setReviewSummary(reviewSummary); setExpanded(true); }}>Start another review</button>
           <SlackNotify />
         </div>
       )}
@@ -200,7 +215,7 @@ function PendingList({
         const lineLabel =
           p.kind === 'inline'
             ? p.startLine && p.startLine !== p.line
-              ? `L${p.startLine}–${p.line}`
+              ? `L${p.startLine}-${p.line}`
               : `L${p.line}`
             : 'file';
         const shortPath = p.path.split('/').slice(-2).join('/');
@@ -211,7 +226,7 @@ function PendingList({
               <span className="pending-path">{shortPath}</span>
               <span className="pending-line">{lineLabel}</span>
             </button>
-            <div className="pending-body">{p.body.trim().slice(0, 140)}{p.body.length > 140 && '…'}</div>
+            <div className="pending-body">{p.body}</div>
             <button
               className="pending-delete"
               onClick={() => onDelete(p)}

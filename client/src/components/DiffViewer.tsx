@@ -1,6 +1,7 @@
 import { DiffEditor, Editor } from '@monaco-editor/react';
 import type { editor as MonacoEditor } from 'monaco-editor';
-import { useEffect, useRef, useState } from 'react';
+import { Component, useEffect, useRef, useState, type ReactNode } from 'react';
+import { comparisonKey } from '@shared/types';
 import type { DiffFile, BlameRange } from '@shared/types';
 import { fileContentFor, useStore } from '../state/store.js';
 import { monacoThemeFor, usePrefs } from '../state/preferences.js';
@@ -14,7 +15,31 @@ interface Props {
   position: { index: number; total: number } | null;
 }
 
+class DiffBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() { return { failed: true }; }
+  render() {
+    if (this.state.failed) return <div className="diff-placeholder" role="alert">
+      <p>The code viewer could not render. Your review drafts are preserved.</p>
+      <button type="button" onClick={() => this.setState({ failed: false })}>Retry code viewer</button>
+    </div>;
+    return this.props.children;
+  }
+}
+
 export function DiffViewer({ file, position }: Props) {
+  const comparison = useStore((s) => s.comparison);
+  if (!file) return <div className="diff-pane"><div className="diff-placeholder">
+    <div>Select a visible file from the sidebar, or reveal hidden noise files.</div>
+  </div></div>;
+  return <DiffBoundary key={`${comparison ? comparisonKey(comparison) : ''}:${file.path}`}>
+    <PopulatedDiffViewer file={file} position={position} />
+  </DiffBoundary>;
+}
+
+function PopulatedDiffViewer({ file, position }: { file: DiffFile; position: Props['position'] }) {
+  const comparison = useStore((s) => s.comparison);
+  const historical = useStore((s) => s.scope.kind !== 'all' || s.scopeLoading);
   const showNoise = useStore((s) => s.showNoise);
   const toggleNoise = useStore((s) => s.toggleNoise);
   const fullEntry = useStore((s) => (file ? s.fullContent[file.path] : undefined));
@@ -40,19 +65,6 @@ export function DiffViewer({ file, position }: Props) {
     closeComposer();
   }, [file?.path, closeComposer]);
 
-  if (!file) {
-    return (
-      <div className="diff-pane">
-        <div className="diff-placeholder">
-          <div>
-            <div className="big">Select a file from the sidebar</div>
-            <div>Or press <span className="kbd-hint">j</span> / <span className="kbd-hint">k</span> to navigate.</div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   const isNewFile = file.status === 'added';
   const isDeleted = file.status === 'removed';
   const lang = languageFor(file.path);
@@ -61,9 +73,11 @@ export function DiffViewer({ file, position }: Props) {
   const noiseHunkCount = file.hunks.filter((h) => h.noise).length;
   const blameReady = blameEntry?.status === 'ready' && blameEntry.ranges.length > 0;
   const canUseFull = noiseHunkCount === 0 || showNoise;
-  const fullReady = fullEntry?.status === 'ready';
+  const fullReady = fullEntry?.status === 'ready' && !!comparison && fullEntry.comparisonKey === comparisonKey(comparison);
   const loadingFull = fullEntry?.status === 'loading';
-  const hasFull = fullReady && canUseFull;
+  const hasFull = fullReady && canUseFull &&
+    (isNewFile || fullEntry!.oldContent !== null) &&
+    (isDeleted || fullEntry!.newContent !== null);
   const {
     oldContent: hunkOld,
     newContent: hunkNew,
@@ -409,16 +423,17 @@ export function DiffViewer({ file, position }: Props) {
           />
         </div>
       )}
-      <InlineCommentsLayer
+      {historical && <p role="status">Historical comparison. Return to All commits to add or submit review comments.</p>}
+      {!historical && <InlineCommentsLayer
         editor={commentEditor}
         filePath={file.path}
         newLineMap={hasFull ? undefined : newLineMap}
-      />
-      <ReviewCommentsLayer
+      />}
+      {!historical && <ReviewCommentsLayer
         editor={commentEditor}
         filePath={file.path}
         newLineMap={hasFull ? undefined : newLineMap}
-      />
+      />}
       <BlameResizer
         width={blameWidth}
         setWidth={setBlameWidth}
