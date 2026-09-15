@@ -39,8 +39,14 @@ export function getBundle(
 export function setBundle(bundle: PRBundle): void {
   const { owner, repo, number, headSha } = bundle.meta;
   const k = key(owner, repo, number, headSha);
-  store.delete(k);
-  store.set(k, { bundle, storedAt: Date.now() });
+  const existing = store.get(k);
+  const sameContext = existing && JSON.stringify(existing.bundle) === JSON.stringify(bundle);
+  // Keep generated results only for the same full context. Review activity is
+  // fetched afresh on reopen because it can change independently of PR metadata.
+  // BoundedCache.set preserves the original expiry even when metadata changes.
+  store.set(k, sameContext
+    ? { ...existing, bundle, reviewComments: undefined }
+    : { bundle, storedAt: Date.now() });
 }
 
 export function getTLDR(
