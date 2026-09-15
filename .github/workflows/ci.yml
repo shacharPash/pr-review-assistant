@@ -9,8 +9,8 @@ permissions:
   contents: read
 
 jobs:
-  check:
-    name: typecheck · test · build
+  verify:
+    name: Node ${{ matrix.node }} verification
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
@@ -37,3 +37,15 @@ jobs:
 
       - name: Production build
         run: npm run build
+
+  check:
+    name: typecheck · test · build
+    needs: verify
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - name: Require every supported Node job to pass
+        env:
+          VERIFICATION_RESULT: ${{ needs.verify.result }}
+        run: test "$VERIFICATION_RESULT" = success
