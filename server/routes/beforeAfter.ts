@@ -88,7 +88,7 @@ beforeAfterRouter.get('/api/before-after/stream', (req: Request, res: Response) 
     },
   });
 
-  req.on('close', () => runner.abort());
+  res.on('close', () => runner.abort());
   // Light route: two short sentences in a fixed format.
   runner.start(bundle, { systemPrompt: BEFORE_AFTER_PROMPT, model: pickModel(req.query.mode, 'light') });
 });
