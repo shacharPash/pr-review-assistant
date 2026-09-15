@@ -63,7 +63,7 @@ tldrRouter.get('/api/tldr/stream', (req: Request, res: Response) => {
     },
   });
 
-  req.on('close', () => {
+  res.on('close', () => {
     runner.abort();
   });
 

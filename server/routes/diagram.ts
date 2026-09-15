@@ -89,6 +89,6 @@ diagramRouter.get('/api/diagram/stream', (req: Request, res: Response) => {
     },
   });
 
-  req.on('close', () => runner.abort());
+  res.on('close', () => runner.abort());
   runner.start(bundle, { systemPrompt: DIAGRAM_PROMPT, model: pickModel(req.query.mode, 'heavy') });
 });

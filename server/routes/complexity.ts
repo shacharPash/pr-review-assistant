@@ -90,7 +90,7 @@ complexityRouter.get('/api/complexity/stream', (req: Request, res: Response) => 
     },
   });
 
-  req.on('close', () => runner.abort());
+  res.on('close', () => runner.abort());
   // Light route: one-word classification.
   runner.start(bundle, { systemPrompt: COMPLEXITY_PROMPT, model: pickModel(req.query.mode, 'light') });
 });
