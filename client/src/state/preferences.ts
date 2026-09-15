@@ -7,9 +7,9 @@ export type ViewMode = 'split' | 'unified';
  * quality/speed/cost trade-off explicitly, once, and it applies globally
  * (TL;DR, AI Review, Ask, personas, etc.).
  *
- * - `opus`   — strongest reasoning; slowest and priciest.
- * - `sonnet` — balanced default; good quality, much snappier than Opus.
- * - `haiku`  — fastest and cheapest; great for quick questions / routine PRs.
+ * - `opus`   , strongest reasoning; slowest and priciest.
+ * - `sonnet` , balanced default; good quality, much snappier than Opus.
+ * - `haiku`  , fastest and cheapest; great for quick questions / routine PRs.
  */
 export type ModelPreference = 'opus' | 'sonnet' | 'haiku';
 
@@ -99,7 +99,7 @@ export const usePrefs = create<Preferences>((set, get) => ({
     //   fast  → sonnet
     if (raw === 'smart') return 'opus';
     if (raw === 'fast') return 'sonnet';
-    // New users: Sonnet — the balanced default (good quality, far snappier
+    // New users: Sonnet , the balanced default (good quality, far snappier
     // than Opus, avoids surprise-slow first runs).
     return 'sonnet';
   })(),

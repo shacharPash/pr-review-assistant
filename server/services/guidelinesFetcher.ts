@@ -35,7 +35,7 @@ async function fetchOne(owner: string, repo: string, path: string, headSha: stri
     const text = stdout.trim();
     return text ? text.slice(0, MAX_FILE_CHARS) : null;
   } catch {
-    // 404 (file doesn't exist), auth, or network — all non-fatal. Guidelines
+    // 404 (file doesn't exist), auth, or network , all non-fatal. Guidelines
     // are optional context; the review still runs without them.
     return null;
   }

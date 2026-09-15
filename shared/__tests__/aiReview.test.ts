@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseAIReview } from '../aiReview.js';
+import { parseAIReview, resolveAIReviewComment } from '../aiReview.js';
 
 describe('parseAIReview', () => {
   it('parses a plain JSON object', () => {
@@ -33,21 +33,24 @@ describe('parseAIReview', () => {
     expect(r!.comments[0].severity).toBe('security');
   });
 
-  it('drops comments missing a file, line, or body', () => {
-    const raw = JSON.stringify({
-      verdict: 'comment',
-      summary: '',
-      comments: [
-        { file: '', line: 1, body: 'no file' },
-        { file: 'a.ts', line: 0, body: 'bad line' },
-        { file: 'a.ts', line: 5, body: '' },
-        { file: 'a.ts', line: 9, body: 'keep me' },
-      ],
-    });
-    const r = parseAIReview(raw);
-    expect(r!.comments).toHaveLength(1);
-    expect(r!.comments[0].line).toBe(9);
+  it('rejects a finding with no body instead of dropping it', () => {
+    expect(parseAIReview(JSON.stringify({ verdict: 'comment', summary: '', comments: [{ file: 'a.ts', line: 5, body: '' }] }))).toBeNull();
   });
+
+  it('retains findings with invalid location metadata and a warning', () => {
+    const result = parseAIReview(JSON.stringify({ verdict: 'comment', summary: '', comments: [
+      { file: '', line: 1, body: 'Missing file' },
+      { file: 'a.ts', line: 0, body: 'Invalid line' },
+      { file: 'a.ts', line: '5', body: 'Invalid line type' },
+    ] }));
+    expect(result!.comments).toHaveLength(3);
+    expect(result!.comments.every((c) => c.anchorWarning)).toBe(true);
+  });
+
+  it.each(['{}', '[]', '{"error":"Unable to review"}', '{"verdict":"fine","summary":"ok","comments":[]}',
+    '{"verdict":"approve","comments":[]}', '{"verdict":"approve","summary":"x"}',
+    '{"verdict":"approve","summary":"x","comments":[],"error":"failed"}',
+  ])('rejects incomplete or error output %s', (raw) => expect(parseAIReview(raw)).toBeNull());
 
   it('coerces verdict to "comment" when comments exist but verdict says approve', () => {
     const raw = JSON.stringify({
@@ -81,5 +84,19 @@ describe('parseAIReview', () => {
   it('returns null for non-JSON garbage', () => {
     expect(parseAIReview('the model refused to answer')).toBeNull();
     expect(parseAIReview('')).toBeNull();
+  });
+});
+
+import type { PRBundle } from '../types.js';
+describe('AI finding locations', () => {
+  const bundle = { files: [{ path: 'a.ts', binary: false, noise: null,
+    rawPatch: '@@ -1,3 +1,3 @@\n context\n-old\n+new\n context' }] } as PRBundle;
+  const finding = { file: 'a.ts', line: 2, severity: 'bug' as const, title: 'Bug', body: 'Meaningful finding' };
+  it('anchors exact added lines', () => expect(resolveAIReviewComment(bundle, finding).anchorWarning).toBeUndefined());
+  it.each([{ line: 1000 }, { line: 1 }, { file: 'missing.ts' }, { startLine: 1 }])('keeps unanchored finding %j', (overrides) => {
+    const result = resolveAIReviewComment(bundle, { ...finding, ...overrides });
+    expect(result.body).toBe(finding.body);
+    expect(result.anchorWarning).toBeTruthy();
+    expect(result.line).toBe(overrides.line ?? finding.line);
   });
 });

@@ -1,3 +1,5 @@
+import { findComparison } from '../services/comparisons.js';
+import { comparisonKey } from '../../shared/types.js';
 import { Router, type Request, type Response } from 'express';
 import { fetchBlame } from '../services/blame.js';
 import { getBundle } from '../services/cache.js';
@@ -24,7 +26,11 @@ blameRouter.get('/api/blame', async (req: Request, res: Response) => {
     return res.status(404).json({ error: 'PR bundle not in cache.' });
   }
 
-  const cacheKey = `${owner}/${repo}:${headSha}:${path}`;
+  const selected = findComparison(bundle, String(req.query.comparison ?? ''));
+  if (!selected || !selected.files.some((f) => f.path === path && f.status !== 'removed')) {
+    return res.status(409).json({ error: 'File not in the selected comparison.' });
+  }
+  const cacheKey = `${comparisonKey(selected.comparison)}:${path}`;
   const cached = memo.get(cacheKey);
   if (cached) return res.json({ ranges: cached });
 
@@ -38,7 +44,7 @@ blameRouter.get('/api/blame', async (req: Request, res: Response) => {
     }
   }
 
-  const promise = fetchBlame(owner, repo, headSha, path);
+  const promise = fetchBlame(owner, repo, selected.comparison.headSha, path);
   inflight.set(cacheKey, promise);
   try {
     const ranges = await promise;

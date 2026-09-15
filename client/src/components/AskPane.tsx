@@ -5,7 +5,7 @@ import { useStore } from '../state/store.js';
 import { AIMark } from './AIMark.js';
 
 /**
- * "Ask" tab — a multi-turn chat about the current PR. Sits next to AI Review as
+ * "Ask" tab , a multi-turn chat about the current PR. Sits next to AI Review as
  * the second AI-powered tab. The model gets the full diff plus whichever file
  * is currently open (see store.askChat), so questions like "what does this do?"
  * resolve to the code on screen. Conversation is in-memory only and resets when

@@ -13,9 +13,8 @@ const SEVERITY_META: Record<AISeverity, { label: string; emoji: string }> = {
 
 /**
  * AI Review tab. Renders the model's suggested inline comments as clickable
- * cards — clicking one jumps the diff to that line and opens the composer
- * pre-filled with the suggestion (see `jumpToSuggestion` + DiffViewer). When
- * the model finds nothing important, shows a "ready to approve" state.
+ * cards. Anchored findings can open a draft in the full PR comparison.
+ * Invalid locations stay visible for manual investigation.
  */
 export function AIReviewPane() {
   const aiReview = useStore((s) => s.aiReview);
@@ -23,6 +22,7 @@ export function AIReviewPane() {
   const retry = useStore((s) => s.retryAIReview);
   const bundle = useStore((s) => s.bundle);
   const jumpToSuggestion = useStore((s) => s.jumpToSuggestion);
+  const historical = useStore((s) => s.scope.kind !== 'all' || s.scopeLoading);
   const lineComments = useStore((s) => s.lineComments);
 
   const parsed = useMemo(
@@ -33,7 +33,7 @@ export function AIReviewPane() {
   // Live elapsed-seconds counter while the review streams, so a multi-minute
   // run on a large PR reads as "working", not "hung". Derived from the store's
   // `aiReviewStartedAt` (not a mount-time timestamp) so switching tabs away and
-  // back — which unmounts and remounts this pane — resumes the count instead of
+  // back , which unmounts and remounts this pane , resumes the count instead of
   // restarting it at 0.
   const [elapsed, setElapsed] = useState(0);
   useEffect(() => {
@@ -47,8 +47,7 @@ export function AIReviewPane() {
     return () => clearInterval(id);
   }, [aiReview.status, startedAt]);
 
-  // Keep only suggestions we can actually anchor to a changed diff line,
-  // snapping near-misses to the nearest changed line in the same file.
+  // Preserve findings even when their model-supplied location cannot be anchored.
   const comments = useMemo(() => {
     if (!parsed || !bundle) return [];
     return parsed.comments
@@ -90,12 +89,12 @@ export function AIReviewPane() {
 
   if (comments.length === 0) {
     return (
-      <div className="ai-review-clean">
-        <div className="air-clean-badge">✓</div>
+      <div className="ai-review-empty">
+        <div className="air-clean-badge" aria-hidden="true">ℹ</div>
         <div className="air-clean-title">{parsed.verdict === 'approve' ? 'No findings reported by AI' : 'Review completed without inline findings'}</div>
         <div className="air-clean-sub">
           {parsed.summary}
-          <p>This is an AI assessment of the supplied diff. Review the change before deciding whether to approve.</p>
+          <p>This is an AI assessment of the supplied diff, which can be truncated and omit tests or hidden files. Review the change before deciding whether to approve.</p>
         </div>
         <button className="link-btn retry air-clean-retry" onClick={retry}>Re-run review</button>
       </div>
@@ -104,6 +103,7 @@ export function AIReviewPane() {
 
   return (
     <div className="ai-review-body">
+      {historical && <p role="note">AI Review covers the full PR. Select All commits to stage a finding.</p>}
       <div className="air-header">
         <span className="air-count">{comments.length}</span>
         <span className="air-count-label">
@@ -114,13 +114,9 @@ export function AIReviewPane() {
       {comments.map((c, i) => {
         const staged = !c.anchorWarning && !!lineComments[c.file]?.[c.line];
         return (
-          <button
+          <article
             key={`${c.file}:${c.line}:${i}`}
-            type="button"
             className={`air-card ai-sev-${c.severity} ${staged ? 'staged' : ''}`}
-            onClick={() => { if (!c.anchorWarning) jumpToSuggestion(c); }}
-            disabled={!!c.anchorWarning}
-            title="Jump to this line and draft the comment"
           >
             <div className="air-card-top">
               <span className="air-sev">
@@ -137,8 +133,8 @@ export function AIReviewPane() {
               children={<SafeInline text={c.body} />}
             />
             {c.anchorWarning ? <div className="air-anchor-warning" role="note">Unanchored finding: {c.anchorWarning}</div> :
-              <div className="air-card-cta">{staged ? 'Open in diff →' : 'Add as comment →'}</div>}
-          </button>
+              <button type="button" className="link-btn air-card-cta" disabled={historical} onClick={() => jumpToSuggestion(c)}>{staged ? 'Open in diff →' : 'Add as comment →'}</button>}
+          </article>
         );
       })}
     </div>

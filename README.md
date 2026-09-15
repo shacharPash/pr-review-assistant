@@ -147,3 +147,12 @@ The server runs on `localhost` and opens no outbound connections beyond what `gh
 ## License
 
 MIT — see [LICENSE](LICENSE). Issues and PRs welcome.
+
+
+### AI Review and Ask
+
+The Insights panel includes AI Review and Ask. AI Review runs when opened and suggests findings to investigate. Select All commits to stage an exactly located finding as a draft; staging never submits a review. Findings outside the added lines remain visible with an unanchored warning. An empty AI result is an assessment of the supplied context, not a human approval. Malformed or incomplete output shows a retryable error.
+
+Re-run review bypasses the saved result. Reopening can reuse a valid result for the same PR head, selected model and prompt contents. Changing the model or included conventions creates a separate cache entry. Convention files are fetched at the reviewed head with a bounded timeout. The review prompt can omit hidden files and tests when production files are present, and long diffs can be truncated.
+
+Ask accepts follow-up questions about the PR and can include the open file as focus. Answers use the shared safe Markdown renderer. Chat history stays in memory and resets on PR navigation. Switching PRs closes the old review stream and aborts chat; late output cannot enter the new PR. An interrupted answer remains visibly incomplete. Both routes use the shared prompt-only CLI policy and its timeout and concurrency limits. The model picker selects Sonnet, Opus or Haiku explicitly; unknown selections fall back to Sonnet.

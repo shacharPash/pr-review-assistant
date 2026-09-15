@@ -23,7 +23,7 @@ export async function fetchFileAtRef(
     const { stdout } = await execFileAsync(
       'gh',
       ['api', '-H', 'Accept: application/vnd.github.raw', url],
-      { maxBuffer: MAX_BYTES, encoding: 'utf8' },
+      { timeout: 30_000, killSignal: 'SIGKILL', maxBuffer: MAX_BYTES, encoding: 'utf8' },
     );
     return stdout;
   } catch (err) {

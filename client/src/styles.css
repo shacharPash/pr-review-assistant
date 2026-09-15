@@ -3500,7 +3500,7 @@ button { font: inherit; }
 
 /* ---------- AI Review pane ---------- */
 
-/* Thinking state — the model is producing JSON we can't render yet, so show a
+/* Thinking state , the model is producing JSON we can't render yet, so show a
    calm working indicator rather than raw JSON. */
 .ai-review-thinking {
   display: flex;

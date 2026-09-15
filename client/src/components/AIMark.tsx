@@ -2,7 +2,7 @@ import { useId } from 'react';
 
 /**
  * The mark for the AI-powered features (AI Review + Ask). A hexagon "node" with
- * a bright core — an engineering/graph feel that reads as a dev tool, and is
+ * a bright core , an engineering/graph feel that reads as a dev tool, and is
  * deliberately NOT the four-point sparkle (which looked like the Gemini logo).
  * Blue→teal gradient, distinct from Gemini's purple/blue.
  *

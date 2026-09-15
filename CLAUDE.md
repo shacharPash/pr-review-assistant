@@ -95,7 +95,7 @@ the old "Key Points" tab.
   conventions. Bias hard toward silence: 0 comments is better than noise.
 - Repo conventions are fetched best-effort via `gh api` from the repo's own
   files (CLAUDE.md / AGENTS.md / CONTRIBUTING / .cursorrules / copilot
-  instructions) and injected into the prompt — see `guidelinesFetcher.ts`.
+  instructions) and injected into the prompt , see `guidelinesFetcher.ts`.
 - Output is a strict JSON object (`shared/aiReview.ts` `AIReviewResult`): a
   verdict, a one-line summary, and 0-6 suggested inline comments each anchored
   to a changed diff line. When empty, the pane shows "ready to approve".
@@ -115,7 +115,7 @@ batched review submit, plus reply/resolve on existing threads). The earlier
 ## AI Chat (Ask tab)
 
 A multi-turn Q&A over the current PR, living in the "Ask" tab right next to AI
-Review — the two are marked as the AI-powered pair (shared hex-node mark,
+Review , the two are marked as the AI-powered pair (shared hex-node mark,
 gradient accent, hairline separators from the utility tabs). Purpose is understanding, not
 judging: it answers the reviewer's questions ("what does this do?", "what's the
 riskiest part?") grounded in the full diff.
@@ -124,12 +124,12 @@ riskiest part?") grounded in the full diff.
   file the reviewer currently has open (`focus`), so vague references resolve to
   the code on screen. See `buildAiChatPrompt` in `claudeRunner.ts`.
 - Transport: `POST /api/ai-chat/stream`, streamed as NDJSON (`AiChatEvent` in
-  `shared/aiChat.ts`) — the growing conversation is too big for a querystring
+  `shared/aiChat.ts`) , the growing conversation is too big for a querystring
   and EventSource can't POST. Uses the reviewer's chosen model. NOTE: abort on
-  RESPONSE close, not request close — a POST's `req` closes as soon as the body
+  RESPONSE close, not request close , a POST's `req` closes as soon as the body
   is read, which would kill the `claude` child instantly.
 - State: conversation is in-memory only (store `chat`), resets on new PR. Not
-  cached (every question is unique) and never blocks the diff — chat is additive.
+  cached (every question is unique) and never blocks the diff , chat is additive.
 
 ## Out of scope for v1 (do not implement)
 
@@ -160,7 +160,7 @@ If either is missing, the relevant feature surfaces a clear error in the UI.
 - [x] M2 — Noise filtering (file + hunk heuristics, toggle UI)
 - [x] M3 — TL;DR streaming from claude-code over SSE
 - [x] M4 — Reading order (heuristic), keyboard nav (j/k), header polish
-- [x] M5 — AI Review tab (bug-bot suggestions → click-to-draft inline comments);
+- [x] M5 , AI Review tab (bug-bot suggestions → click-to-draft inline comments);
   checklist trimmed to 3-4 items
 
 Verified against `cli/cli#13509` (substantive Go PR) and `cli/cli#13510`

@@ -49,7 +49,7 @@ aiReviewRouter.get('/api/ai-review/stream', async (req: Request, res: Response) 
     }
   };
 
-  // Repo convention files — fetched once per PR and cached. Best-effort: an
+  // Repo convention files , fetched once per PR and cached. Best-effort: an
   // empty string just means "no repo-specific rules to enforce".
   let guidelines = getGuidelines(owner, repo, number, headSha);
   if (guidelines === undefined) {
@@ -90,10 +90,6 @@ aiReviewRouter.get('/api/ai-review/stream', async (req: Request, res: Response) 
 
   res.on('close', () => runner.abort());
 
-  // Honors the reviewer's model choice. The timeout is generous (7 min) because
-  // deep bug-finding on a dense PR legitimately takes minutes — especially on
-  // Opus — and the result is cached afterward. This route is also lazy (only
-  // runs when the AI Review tab is opened), so we never spend it on PRs no one
-  // reviews.
+  // Use the shared process timeout, queue and cancellation policy.
   runner.startPrompt(prompt, { model });
 });
