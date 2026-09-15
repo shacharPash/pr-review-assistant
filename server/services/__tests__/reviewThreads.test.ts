@@ -7,20 +7,22 @@ const RESP: GHThreadsResponse = {
       id: 'THREAD_live',
       isResolved: false,
       isOutdated: false,
+      diffSide: 'RIGHT',
       comments: { nodes: [
         { databaseId: 101, author: { login: 'alice', url: 'https://github.com/alice', avatarUrl: 'https://a/alice.png', __typename: 'User' },
-          body: 'nit: rename', path: 'src/a.ts', line: 42, originalLine: 40, startLine: null, originalStartLine: null, diffSide: 'RIGHT', createdAt: '2026-06-01T00:00:00Z', url: 'https://gh/c/101' },
+          body: 'nit: rename', path: 'src/a.ts', line: 42, originalLine: 40, startLine: null, originalStartLine: null, createdAt: '2026-06-01T00:00:00Z', url: 'https://gh/c/101' },
         { databaseId: 102, author: { login: 'bob', url: 'https://github.com/bob', avatarUrl: 'https://a/bob.png', __typename: 'User' },
-          body: 'agreed', path: 'src/a.ts', line: 42, originalLine: 40, startLine: null, originalStartLine: null, diffSide: 'RIGHT', createdAt: '2026-06-02T00:00:00Z', url: 'https://gh/c/102' },
+          body: 'agreed', path: 'src/a.ts', line: 42, originalLine: 40, startLine: null, originalStartLine: null, createdAt: '2026-06-02T00:00:00Z', url: 'https://gh/c/102' },
       ] },
     },
     {
       id: 'THREAD_outdated_resolved',
       isResolved: true,
       isOutdated: true,
+      diffSide: 'RIGHT',
       comments: { nodes: [
         { databaseId: 200, author: { login: 'sonarcloud[bot]', url: 'https://github.com/sonar', avatarUrl: 'https://a/s.png', __typename: 'Bot' },
-          body: 'code smell', path: 'src/b.ts', line: null, originalLine: 7, startLine: null, originalStartLine: null, diffSide: 'RIGHT', createdAt: '2026-05-01T00:00:00Z', url: 'https://gh/c/200' },
+          body: 'code smell', path: 'src/b.ts', line: null, originalLine: 7, startLine: null, originalStartLine: null, createdAt: '2026-05-01T00:00:00Z', url: 'https://gh/c/200' },
       ] },
     },
   ] } } } },
@@ -52,15 +54,15 @@ describe('mapReviewThreads', () => {
 
   it('skips threads that have no comments', () => {
     const empty: GHThreadsResponse = { data: { repository: { pullRequest: { reviewThreads: { nodes: [
-      { id: 'EMPTY', isResolved: false, isOutdated: false, comments: { nodes: [] } },
+      { id: 'EMPTY', isResolved: false, isOutdated: false, diffSide: 'RIGHT', comments: { nodes: [] } },
     ] } } } } };
     expect(mapReviewThreads(empty)).toEqual([]);
   });
 
   it('falls back to a ghost author when the comment author is null', () => {
     const resp: GHThreadsResponse = { data: { repository: { pullRequest: { reviewThreads: { nodes: [
-      { id: 'T', isResolved: false, isOutdated: false, comments: { nodes: [
-        { databaseId: 9, author: null, body: 'x', path: 'p.ts', line: 1, originalLine: 1, startLine: null, originalStartLine: null, diffSide: 'RIGHT', createdAt: '2026-01-01T00:00:00Z', url: 'https://gh/c/9' },
+      { id: 'T', isResolved: false, isOutdated: false, diffSide: 'RIGHT', comments: { nodes: [
+        { databaseId: 9, author: null, body: 'x', path: 'p.ts', line: 1, originalLine: 1, startLine: null, originalStartLine: null, createdAt: '2026-01-01T00:00:00Z', url: 'https://gh/c/9' },
       ] } },
     ] } } } } };
     const t = mapReviewThreads(resp)[0];

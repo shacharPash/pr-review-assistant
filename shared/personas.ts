@@ -37,7 +37,7 @@ No headings, no bullets, no lists. Just two emoji-led sentences-or-two.`,
 ACTIONABLE items the reviewer can tick off before approving.
 
 Format rules:
-- 4-7 items total
+- 3-4 items total. Keep ONLY the most important checks; drop anything minor.
 - Each item on its own line, starting with "[ ] "  (literal — NOT a markdown checkbox)
 - Each item must be a concrete VERIFICATION action ("Confirm that…", "Check whether…", "Verify the…")
 - Use **bold** for the thing being verified
@@ -78,7 +78,8 @@ Turn the ticket's acceptance criteria / DoD into verification items the reviewer
 can tick off to confirm the PR actually delivers what was asked.
 
 Format rules:
-- 4-7 items total, each on its own line starting with "[ ] " (literal — NOT a markdown checkbox)
+- 3-4 items total. Keep ONLY the most important criteria; drop anything minor.
+- Each item on its own line starting with "[ ] " (literal — NOT a markdown checkbox)
 - Each item is one acceptance criterion phrased as a check ("Confirm that…", "Verify the…")
 - Use **bold** for the thing being verified; use \`inline code\` for any function/file name
 - If the diff appears NOT to satisfy a criterion, append " — ⚠ not covered by this PR" to that item

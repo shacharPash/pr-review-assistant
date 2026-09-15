@@ -6,6 +6,8 @@ import fs from 'node:fs';
 import open from 'open';
 import { prRouter } from './routes/pr.js';
 import { tldrRouter } from './routes/tldr.js';
+import { aiReviewRouter } from './routes/aiReview.js';
+import { aiChatRouter } from './routes/aiChat.js';
 import { fileRouter } from './routes/file.js';
 import { explainRouter } from './routes/explain.js';
 import { headlineRouter } from './routes/headline.js';
@@ -43,6 +45,8 @@ async function main() {
   app.use(express.json({ limit: '2mb' }));
   app.use(prRouter);
   app.use(tldrRouter);
+  app.use(aiReviewRouter);
+  app.use(aiChatRouter);
   app.use(fileRouter);
   app.use(explainRouter);
   app.use(headlineRouter);

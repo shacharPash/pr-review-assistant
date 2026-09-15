@@ -4,6 +4,8 @@ import type { PRComments } from '../../shared/reviewComments.js';
 interface Entry {
   bundle: PRBundle;
   tldr?: string;
+  aiReview?: Record<string, string>; // raw JSON text of the AI Review result (see shared/aiReview.ts)
+  guidelines?: string; // repo convention files, concatenated (or "" when none)
   headline?: string;
   diagram?: string; // mermaid source, or "NONE"
   beforeAfter?: string; // structured "BEFORE: ... AFTER: ..." or "NONE"
@@ -55,6 +57,43 @@ export function setTLDR(
   const existing = store.get(k);
   if (!existing) return;
   store.set(k, { ...existing, tldr });
+}
+
+export function getAiReview(
+  owner: string, repo: string, number: number, headSha: string, identity: string,
+): string | undefined {
+  return store.get(key(owner, repo, number, headSha))?.aiReview?.[identity];
+}
+
+export function setAiReview(
+  owner: string, repo: string, number: number, headSha: string, identity: string, text: string,
+): void {
+  const k = key(owner, repo, number, headSha);
+  const existing = store.get(k);
+  if (!existing) return;
+  store.set(k, { ...existing, aiReview: { ...existing.aiReview, [identity]: text } });
+}
+
+export function getGuidelines(
+  owner: string,
+  repo: string,
+  number: number,
+  headSha: string,
+): string | undefined {
+  return store.get(key(owner, repo, number, headSha))?.guidelines;
+}
+
+export function setGuidelines(
+  owner: string,
+  repo: string,
+  number: number,
+  headSha: string,
+  guidelines: string,
+): void {
+  const k = key(owner, repo, number, headSha);
+  const existing = store.get(k);
+  if (!existing) return;
+  store.set(k, { ...existing, guidelines });
 }
 
 export function getHeadline(
