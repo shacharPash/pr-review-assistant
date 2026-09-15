@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import { ClaudeRunner, pickModel } from '../services/claudeRunner.js';
-import { getBundle, getExplanation, setExplanation } from '../services/cache.js';
+import { getBundle, getGenerated, setGenerated, generatedIdentity } from '../services/cache.js';
 import { buildChecklistAcPrompt, findPersona } from '../../shared/personas.js';
 import { checklistSource } from '../../shared/jira.js';
 
@@ -48,10 +48,11 @@ explainRouter.get('/api/explain/stream', (req: Request, res: Response) => {
     }
   };
 
-  const cached = getExplanation(owner, repo, number, headSha, personaId);
+  const variant = generatedIdentity(bundle, `explain:${personaId}`, pickModel(req.query.mode, 'light'));
+  const cached = req.query.retry === '1' ? undefined : getGenerated(owner, repo, number, headSha, variant);
   if (cached) {
     send('chunk', cached);
-    send('done', '');
+    send('done', { text: cached });
     res.end();
     return;
   }
@@ -60,8 +61,8 @@ explainRouter.get('/api/explain/stream', (req: Request, res: Response) => {
     onChunk: (delta) => send('chunk', delta),
     onUsage: (usage) => send('usage', usage),
     onDone: (full) => {
-      setExplanation(owner, repo, number, headSha, personaId, full);
-      send('done', '');
+      setGenerated(owner, repo, number, headSha, variant, full);
+      send('done', { text: full });
       res.end();
     },
     onError: (msg) => {

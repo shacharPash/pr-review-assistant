@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import fs from 'node:fs';
 import open from 'open';
+import { privacyRouter, requireAIConsent } from './routes/privacy.js';
 import { prRouter } from './routes/pr.js';
 import { tldrRouter } from './routes/tldr.js';
 import { aiReviewRouter } from './routes/aiReview.js';
@@ -22,12 +23,14 @@ import { reviewCommentsRouter } from './routes/reviewComments.js';
 import { healthRouter } from './routes/health.js';
 import { checksRouter } from './routes/checks.js';
 import { checkHealth } from './services/healthCheck.js';
+import { localRequestBoundary, resolveListenHost } from './security.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const ROOT = path.resolve(__dirname, '..');
 const PORT = Number(process.env.PORT ?? 5173);
 const isDev = process.env.NODE_ENV !== 'production';
+const listenHost = resolveListenHost(process.env);
 
 // SSE clients can disconnect mid-write; that surfaces here as EPIPE/ECONNRESET
 // on the response socket. Per-route handlers also guard, but this catches
@@ -42,7 +45,11 @@ process.on('uncaughtException', (err: NodeJS.ErrnoException) => {
 
 async function main() {
   const app = express();
+  app.disable('x-powered-by');
+  app.use(localRequestBoundary);
   app.use(express.json({ limit: '2mb' }));
+  app.use(requireAIConsent);
+  app.use(privacyRouter);
   app.use(prRouter);
   app.use(tldrRouter);
   app.use(aiReviewRouter);
@@ -89,9 +96,9 @@ async function main() {
     });
   }
 
-  app.listen(PORT, async () => {
+  app.listen(PORT, listenHost, async () => {
     const url = `http://localhost:${PORT}`;
-    console.log(`[pr-review-assistant] listening on ${url}`);
+    console.log(`[pr-review-assistant] listening on ${url} (${listenHost})`);
     // Surface missing-dep warnings in the terminal too — not just the UI
     // banner. Helps people who launched the server but didn't open the
     // browser yet (and didn't realize gh / claude were missing).

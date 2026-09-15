@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from 'express';
-import { fetchPR, probeHeadSha, GHError } from '../services/ghFetcher.js';
-import { getBundle, setBundle } from '../services/cache.js';
+import { fetchPR, GHError } from '../services/ghFetcher.js';
+import { setBundle } from '../services/cache.js';
 
 export const prRouter = Router();
 
@@ -11,11 +11,7 @@ prRouter.get('/api/pr', async (req: Request, res: Response) => {
   }
 
   try {
-    const { owner, repo, number, headSha, baseSha } = await probeHeadSha(input);
-
-    const cached = getBundle(owner, repo, number, headSha);
-    if (cached && cached.meta.baseRefSha === baseSha) return res.json(cached);
-
+    // State, description and review decisions can change without a new commit.
     const bundle = await fetchPR(input);
     setBundle(bundle);
     res.json(bundle);

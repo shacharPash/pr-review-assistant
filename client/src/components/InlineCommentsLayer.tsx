@@ -1,3 +1,4 @@
+import { isAIEnabled } from '../state/privacy.js';
 import { requestGuard, sessionFetch } from '../state/session.js';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -387,6 +388,7 @@ function ComposerCore({
   };
 
   const callAI = async (mode: 'suggest' | 'enhance') => {
+    if (!isAIEnabled()) { setAiError('AI is off. Enable it in Local data & AI first.'); return; }
     aiRequest.current?.abort();
     const controller = new AbortController();
     aiRequest.current = controller;
@@ -396,7 +398,7 @@ function ComposerCore({
     setAiError(null);
     try {
       const original = readOriginalLines(start, end);
-      const res = await sessionFetch('/api/ai-comment', {
+      const res = await sessionFetch('/api/ai-comment?aiConsent=1', {
         signal: controller.signal,
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
