@@ -11,7 +11,7 @@ import path from 'node:path';
 export default defineConfig({
   resolve: {
     alias: {
-      '@shared': path.resolve(__dirname, 'shared'),
+      '@shared': path.resolve(import.meta.dirname, 'shared'),
     },
   },
   test: {

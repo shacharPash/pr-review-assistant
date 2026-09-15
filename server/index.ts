@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import fs from 'node:fs';
 import open from 'open';
+import { privacyRouter, requireAIConsent } from './routes/privacy.js';
 import { prRouter } from './routes/pr.js';
 import { tldrRouter } from './routes/tldr.js';
 import { fileRouter } from './routes/file.js';
@@ -41,6 +42,8 @@ process.on('uncaughtException', (err: NodeJS.ErrnoException) => {
 async function main() {
   const app = express();
   app.use(express.json({ limit: '2mb' }));
+  app.use(requireAIConsent);
+  app.use(privacyRouter);
   app.use(prRouter);
   app.use(tldrRouter);
   app.use(fileRouter);

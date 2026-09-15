@@ -48,7 +48,7 @@ function toAuthor(u: GHUser): ReviewAuthor {
 async function ghApiJSON<T>(path: string): Promise<T> {
   // gh api auto-paginates with --paginate; combined output is a JSON array per call.
   const { stdout } = await execFileAsync('gh', ['api', '--paginate', path], {
-    maxBuffer: 50 * 1024 * 1024,
+    timeout: 30_000, maxBuffer: 50 * 1024 * 1024,
     encoding: 'utf8',
   });
   // --paginate concatenates JSON arrays; join them.
@@ -147,7 +147,7 @@ async function fetchReviewThreads(owner: string, repo: string, number: number): 
   const { stdout } = await execFileAsync(
     'gh',
     ['api', 'graphql', '-f', `query=${query}`, '-F', `owner=${owner}`, '-F', `repo=${repo}`, '-F', `number=${number}`],
-    { maxBuffer: 50 * 1024 * 1024, encoding: 'utf8' },
+    { timeout: 30_000, maxBuffer: 50 * 1024 * 1024, encoding: 'utf8' },
   );
   const resp = JSON.parse(stdout.trim() || '{}') as GHThreadsResponse;
   if (resp.errors?.length) {

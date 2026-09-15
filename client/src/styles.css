@@ -3832,3 +3832,12 @@ button { font: inherit; }
 /* Drop monaco's strikethrough on changed-line deletions; the red background
    already marks deleted text (GitHub-style intra-line diff). */
 .monaco-editor .inline-deleted-text { text-decoration: none; }
+
+.local-data-dialog { max-width: 560px; border: 1px solid var(--border, #454b56); border-radius: 12px; padding: 24px; background: var(--bg, #11141a); color: var(--fg, #eee); line-height: 1.5; }
+.local-data-dialog::backdrop { background: #000a; }
+.local-data-dialog p { margin: 12px 0; }
+.local-data-dialog input { margin-right: 8px; }
+.local-data-dialog button { padding: 7px 10px; cursor: pointer; }
+.local-data-dialog a { color: var(--accent, #94bcff); }
+.local-data-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.author-chip-avatar { display: inline-flex; align-items: center; justify-content: center; }
