@@ -8,7 +8,7 @@ export const aiChatRouter = Router();
 /**
  * Multi-turn PR chat. Mirrors the heavy AI routes (Opus on Smart, Sonnet on
  * Fast) but streams over POST as NDJSON: the growing conversation is too big
- * for a querystring, and EventSource can't POST. Not cached — every question
+ * for a querystring, and EventSource can't POST. Not cached , every question
  * is unique. The diff still renders even if this fails; chat is additive.
  */
 aiChatRouter.post('/api/ai-chat/stream', async (req: Request, res: Response) => {
@@ -48,7 +48,7 @@ aiChatRouter.post('/api/ai-chat/stream', async (req: Request, res: Response) => 
     'X-Accel-Buffering': 'no',
   });
   // Flush headers immediately so the client's fetch resolves and the stream is
-  // established before the (potentially slow) first token — without this, Node
+  // established before the (potentially slow) first token , without this, Node
   // buffers headers until the first write and clients time out waiting.
   res.flushHeaders?.();
 
@@ -85,7 +85,7 @@ aiChatRouter.post('/api/ai-chat/stream', async (req: Request, res: Response) => 
 
   // Abort on RESPONSE close (client actually disconnected), not request close.
   // This is a POST: `req` fires 'close' as soon as express.json() finishes
-  // reading the body — which is immediately — so aborting on `req` close would
+  // reading the body , which is immediately , so aborting on `req` close would
   // kill the claude child the instant it spawns (the bug that made chat hang
   // with no output). `res` stays open until we end it or the client leaves.
   res.on('close', () => runner.abort());

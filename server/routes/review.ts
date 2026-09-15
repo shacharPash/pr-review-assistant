@@ -1,3 +1,4 @@
+import { probeHeadSha } from '../services/ghFetcher.js';
 import { Router, type Request, type Response } from 'express';
 import { spawn } from 'node:child_process';
 import { getBundle } from '../services/cache.js';
@@ -6,13 +7,16 @@ export const reviewRouter = Router();
 
 function runGhWithStdin(args: string[], stdin: string): Promise<string> {
   return new Promise((resolve, reject) => {
-    const proc = spawn('gh', args, { stdio: ['pipe', 'pipe', 'pipe'] });
+    const proc = spawn('gh', args, { stdio: ['pipe', 'pipe', 'pipe'], timeout: 30_000, killSignal: 'SIGKILL' });
     let stdout = '';
     let stderr = '';
     proc.stdout.setEncoding('utf8');
     proc.stderr.setEncoding('utf8');
-    proc.stdout.on('data', (c: string) => { stdout += c; });
-    proc.stderr.on('data', (c: string) => { stderr += c; });
+    proc.stdout.on('data', (c: string) => {
+      stdout += c;
+      if (stdout.length > 8 * 1024 * 1024) { proc.kill('SIGKILL'); reject(new Error('GitHub output exceeded the size limit.')); }
+    });
+    proc.stderr.on('data', (c: string) => { stderr = (stderr + c).slice(-8192); });
     proc.on('error', (err) => reject(err));
     proc.on('close', (code) => {
       if (code === 0) resolve(stdout);
@@ -103,6 +107,8 @@ reviewRouter.post('/api/review', async (req: Request, res: Response) => {
   };
 
   try {
+    const current = await probeHeadSha(`${owner}/${repo}#${number}`);
+    if (current.headSha !== headSha) return res.status(409).json({ error: 'The PR has new commits. Reload and review them before submitting.' });
     const apiPath = `repos/${owner}/${repo}/pulls/${number}/reviews`;
     const stdout = await runGhWithStdin(
       ['api', '--method', 'POST', apiPath, '--input', '-'],

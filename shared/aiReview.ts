@@ -14,7 +14,7 @@ export type AISeverity = 'bug' | 'security' | 'correctness' | 'perf' | 'conventi
 export interface AIReviewComment {
   /** Path exactly as it appears in the diff (modified side). */
   file: string;
-  /** End line on the modified (RIGHT) side — where the comment anchors. */
+  /** End line on the modified (RIGHT) side , where the comment anchors. */
   line: number;
   /** Optional start of a multi-line range (<= line). */
   startLine?: number;

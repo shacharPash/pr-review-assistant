@@ -14,10 +14,10 @@ import { checklistSource } from '@shared/jira';
 
 type TabId = 'ai-review' | 'ask' | PersonaId | 'activity';
 
-// Plain English first — it streams faster than the AI Review (which needs deep
+// Plain English first , it streams faster than the AI Review (which needs deep
 // model reasoning to find real issues) so the user gets readable output sooner.
 // The two AI-powered tabs (AI Review + Ask) sit together and are marked as a
-// pair (shared hex-node mark, gradient accent, hairline separators — see `ai`).
+// pair (shared hex-node mark, gradient accent, hairline separators , see `ai`).
 const TABS: { id: TabId; emoji: string; label: string; ai?: boolean }[] = [
   { id: 'explain', emoji: '💬', label: 'Plain English' },
   { id: 'ai-review', emoji: '🔎', label: 'AI Review', ai: true },

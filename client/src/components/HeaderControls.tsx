@@ -13,9 +13,9 @@ export function HeaderControls() {
         value={modelPreference}
         onChange={setModelPreference}
         options={[
-          { value: 'haiku', label: 'Haiku', title: 'Fastest and cheapest — great for quick questions and routine PRs' },
-          { value: 'sonnet', label: 'Sonnet', title: 'Balanced default — strong quality, much snappier than Opus' },
-          { value: 'opus', label: 'Opus', title: 'Strongest reasoning — slowest and priciest; best for gnarly PRs' },
+          { value: 'haiku', label: 'Haiku', title: 'Fastest and cheapest , great for quick questions and routine PRs' },
+          { value: 'sonnet', label: 'Sonnet', title: 'Balanced default , strong quality, much snappier than Opus' },
+          { value: 'opus', label: 'Opus', title: 'Strongest reasoning , slowest and priciest; best for gnarly PRs' },
         ]}
       />
     </div>

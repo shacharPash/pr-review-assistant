@@ -79,7 +79,7 @@ can tick off to confirm the PR actually delivers what was asked.
 
 Format rules:
 - 3-4 items total. Keep ONLY the most important criteria; drop anything minor.
-- Each item on its own line starting with "[ ] " (literal — NOT a markdown checkbox)
+- Each item on its own line starting with "[ ] " (literal , NOT a markdown checkbox)
 - Each item is one acceptance criterion phrased as a check ("Confirm that…", "Verify the…")
 - Use **bold** for the thing being verified; use \`inline code\` for any function/file name
 - If the diff appears NOT to satisfy a criterion, append " — ⚠ not covered by this PR" to that item
