@@ -47,8 +47,8 @@ else is supporting chrome.
   interface.
 - **Zero config principle.** Anything that would require the user to set up
   a `.env` or run a setup script needs strong justification.
-- **No database, no persistence in v1.** In-memory cache only. Server restart
-  = cold cache, and that's fine.
+- **No database.** Server data uses bounded memory caches. Browser drafts and
+  preferences persist under pra.* until cleared; document changes in PRIVACY.md.
 - **Diff and TL;DR are decoupled.** If `claude-code` fails or times out,
   the Monaco diff still renders. A small retry banner appears in the TLDR
   panel only. Never block the reviewer from reading the code.

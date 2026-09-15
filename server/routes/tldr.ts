@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import { ClaudeRunner, pickModel } from '../services/claudeRunner.js';
-import { getBundle, getGenerated, setGenerated } from '../services/cache.js';
+import { getBundle, getGenerated, setGenerated, generatedIdentity } from '../services/cache.js';
 
 export const tldrRouter = Router();
 
@@ -41,7 +41,7 @@ tldrRouter.get('/api/tldr/stream', (req: Request, res: Response) => {
   };
 
   // If we already have a complete TL;DR cached, replay it as a single chunk.
-  const variant = `tldr:v2:${pickModel(req.query.mode, 'heavy')}`;
+  const variant = generatedIdentity(bundle, 'tldr', pickModel(req.query.mode, 'heavy'));
   const cached = req.query.retry === '1' ? undefined : getGenerated(owner, repo, number, headSha, variant);
   if (cached) {
     send('chunk', cached);

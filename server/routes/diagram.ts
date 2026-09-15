@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import { ClaudeRunner, pickModel } from '../services/claudeRunner.js';
-import { getBundle, getGenerated, setGenerated } from '../services/cache.js';
+import { getBundle, getGenerated, setGenerated, generatedIdentity } from '../services/cache.js';
 
 export const diagramRouter = Router();
 
@@ -67,7 +67,7 @@ diagramRouter.get('/api/diagram/stream', (req: Request, res: Response) => {
     }
   };
 
-  const variant = `diagram:v2:${pickModel(req.query.mode, 'heavy')}`;
+  const variant = generatedIdentity(bundle, 'diagram', pickModel(req.query.mode, 'heavy'));
   const cached = req.query.retry === '1' ? undefined : getGenerated(owner, repo, number, headSha, variant);
   if (cached !== undefined) {
     send('chunk', cached);
