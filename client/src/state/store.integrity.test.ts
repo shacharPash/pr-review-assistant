@@ -27,7 +27,14 @@ class FakeSource extends EventTarget {
 }
 const original = useStore.getInitialState();
 const storage = new Map<string, string>();
-let fetchMock: ReturnType<typeof vi.fn<[string, RequestInit?], Promise<Response>>>;
+let fetchMock = vi.fn(defaultFetch);
+async function defaultFetch(url: string, _init?: RequestInit): Promise<Response> {
+  if (url.startsWith('/api/pr?')) return response(bundle(Number(decodeURIComponent(url).split('#')[1]) || 1));
+  if (url.startsWith('/api/pr/file')) return response({ oldContent: 'base', newContent: 'head' });
+  if (url.includes('/review-comments')) return response({ threads: [], reviews: [] });
+  return response({ ranges: [], runs: [] });
+}
+
 const settle = async () => { for (let i = 0; i < 10; i++) await Promise.resolve(); };
 beforeEach(() => {
   storage.clear();
@@ -37,12 +44,7 @@ beforeEach(() => {
     setItem: (k: string, v: string) => storage.set(k, v),
   }, history: { replaceState: vi.fn() } });
   vi.stubGlobal('EventSource', FakeSource);
-  fetchMock = vi.fn(async (url: string, _init?: RequestInit) => {
-    if (url.startsWith('/api/pr?')) return response(bundle(Number(decodeURIComponent(url).split('#')[1]) || 1));
-    if (url.startsWith('/api/pr/file')) return response({ oldContent: 'base', newContent: 'head' });
-    if (url.includes('/review-comments')) return response({ threads: [], reviews: [] });
-    return response({ ranges: [], runs: [] });
-  });
+  fetchMock = vi.fn(defaultFetch);
   vi.stubGlobal('fetch', fetchMock);
 });
 afterEach(() => { vi.unstubAllGlobals(); });
