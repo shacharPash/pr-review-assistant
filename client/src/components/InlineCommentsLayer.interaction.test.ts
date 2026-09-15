@@ -179,3 +179,28 @@ describe('active inline composer during review submission', () => {
     expect(useStore.getState().lineComments[path][8].body).toBe('PR B unsaved text');
   });
 });
+
+describe('AI findings overlapping a saved human draft', () => {
+  it.each([
+    { savedStart: 3, aiStart: 5 },
+    { savedStart: undefined, aiStart: 3 },
+  ])('preserves the saved body and range $savedStart-5 when AI opens $aiStart-5', async ({ savedStart, aiStart }) => {
+    await act(async () => {
+      const current = useStore.getState().bundle!;
+      useStore.setState({ bundle: { ...current, files: [{ ...current.files[0], rawPatch: '@@ -3,0 +3,3 @@\n+third\n+fourth\n+fifth' }] } });
+      useStore.getState().setLineComment(path, 5, 'Human draft with deliberate range', savedStart);
+      useStore.getState().jumpToSuggestion({ file: path, line: 5, startLine: aiStart, body: 'Different AI prose', title: 'AI finding', severity: 'bug' });
+      const reveal = useStore.getState().pendingReveal!;
+      expect(reveal).toMatchObject({ path, line: 5, startLine: aiStart, prefill: 'Different AI prose' });
+      // DiffViewer consumes this reveal through the real store action after its editor mounts.
+      useStore.getState().openComposer(reveal.path, reveal.startLine, reveal.line, reveal.prefill);
+      useStore.getState().clearPendingReveal();
+    });
+    expect(host.querySelector('textarea')!.value).toBe('Human draft with deliberate range');
+    expect(Array.from(host.querySelectorAll('.vz-range-num'), (node) => node.textContent)).toEqual([`R${savedStart ?? 5}`, 'R5']);
+    await click(button('Save comment'));
+    expect(useStore.getState().lineComments[path][5]).toEqual({
+      body: 'Human draft with deliberate range', ...(savedStart !== undefined ? { startLine: savedStart } : {}),
+    });
+  });
+});
