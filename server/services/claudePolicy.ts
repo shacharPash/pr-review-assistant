@@ -12,6 +12,10 @@ const ENV_NAMES = new Set([
   'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC', 'CLAUDE_CODE_ENABLE_TELEMETRY',
   'CLAUDE_CODE_DISABLE_1M_CONTEXT', 'CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS',
   'CLAUDE_CODE_SKIP_BEDROCK_AUTH', 'CLAUDE_CODE_SKIP_VERTEX_AUTH', 'CLAUDE_CODE_SKIP_FOUNDRY_AUTH',
+  'CLAUDE_CODE_SKIP_MANTLE_AUTH', 'CLAUDE_CODE_SKIP_ANTHROPIC_AWS_AUTH',
+  'CLAUDE_CODE_CLIENT_CERT', 'CLAUDE_CODE_CLIENT_KEY', 'CLAUDE_CODE_CLIENT_KEY_PASSPHRASE',
+  'CLAUDE_CODE_CERT_STORE', 'CLAUDE_CODE_DISABLE_MTLS_RELOAD_ON_STALE_CONNECTION',
+  'CLAUDE_CODE_OAUTH_SCOPES',
   'CLAUDE_CODE_USE_BEDROCK', 'CLAUDE_CODE_USE_VERTEX', 'CLAUDE_CODE_USE_FOUNDRY',
   'CLAUDE_CODE_USE_ANTHROPIC_AWS', 'CLAUDE_CODE_USE_MANTLE',
   'DISABLE_TELEMETRY', 'DISABLE_ERROR_REPORTING', 'DO_NOT_TRACK',
@@ -24,8 +28,16 @@ const ENV_NAMES = new Set([
 ]);
 const PROVIDER_ENV = /^(?:ANTHROPIC|AWS|GOOGLE|GCLOUD|VERTEX|AZURE|OTEL)_[A-Z0-9_]+$/;
 
+// Prompt preprocessing can read @file mentions even without the Read tool.
+// Force this after inherited values and in CLI settings, whose env entries
+// take precedence over user settings. It is not a caller-configurable option.
+const REQUIRED_ENV = Object.freeze({ CLAUDE_CODE_DISABLE_ATTACHMENTS: '1' });
+
 export function claudeEnv(source: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
-  return Object.fromEntries(Object.entries(source).filter(([key, value]) => value !== undefined && (ENV_NAMES.has(key) || PROVIDER_ENV.test(key))));
+  return {
+    ...Object.fromEntries(Object.entries(source).filter(([key, value]) => value !== undefined && (ENV_NAMES.has(key) || PROVIDER_ENV.test(key)))),
+    ...REQUIRED_ENV,
+  };
 }
 
 /** Checked against installed CLI help and the official CLI reference.
@@ -40,7 +52,7 @@ export function claudeArgs(model?: string): string[] {
     '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}',
     '--disable-slash-commands', '--no-chrome', '--no-session-persistence',
     '--permission-mode', 'dontAsk',
-    '--settings', '{"disableAllHooks":true,"disableClaudeAiConnectors":true}',
+    '--settings', JSON.stringify({ disableAllHooks: true, disableClaudeAiConnectors: true, env: REQUIRED_ENV }),
     ...(model ? ['--model', model] : []),
   ];
 }
