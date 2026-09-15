@@ -42,5 +42,5 @@ export interface AiChatRequest {
 export type AiChatEvent =
   | { type: 'chunk'; delta: string }
   | { type: 'usage'; usage: TokenUsage }
-  | { type: 'done' }
+  | { type: 'done'; text: string }
   | { type: 'error'; message: string };
