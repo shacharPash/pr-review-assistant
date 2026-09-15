@@ -47,12 +47,12 @@ describe('classifyFileNoise', () => {
 });
 
 describe('classifyHunkNoise', () => {
-  it('flags imports-only Java edits', () => {
+  it('keeps Java import edits visible', () => {
     const hunk = mkHunk(
       'import java.util.List;\nimport java.util.Map;',
       'import java.util.List;\nimport java.util.Map;\nimport java.util.Set;',
     );
-    expect(classifyHunkNoise(hunk, 'Foo.java')).toBe('imports-only');
+    expect(classifyHunkNoise(hunk, 'Foo.java')).toBeNull();
   });
 
   it('does NOT flag Java hunks that change real code', () => {
@@ -63,21 +63,18 @@ describe('classifyHunkNoise', () => {
     expect(classifyHunkNoise(hunk, 'Foo.java')).toBeNull();
   });
 
-  it('flags TypeScript imports-only hunks', () => {
+  it('keeps TypeScript import edits visible', () => {
     const hunk = mkHunk(
       "import { a } from 'x';",
       "import { a, b } from 'x';\nimport { c } from 'y';",
     );
-    expect(classifyHunkNoise(hunk, 'src/foo.ts')).toBe('imports-only');
+    expect(classifyHunkNoise(hunk, 'src/foo.ts')).toBeNull();
   });
 
-  it('flags hunks where only blank lines were added/removed', () => {
-    // The classifier looks at changed LINES (not changed characters within
-    // a line). So a hunk whose only change is inserting an empty line
-    // counts as whitespace-only; trailing-whitespace tweaks to a code line
-    // do NOT (the changed line still has content).
+  it('keeps ambiguous blank line edits visible', () => {
+    // Whitespace can be content inside multiline strings.
     const hunk = mkHunk('foo();', 'foo();\n   ');
-    expect(classifyHunkNoise(hunk, 'src/foo.ts')).toBe('whitespace-only');
+    expect(classifyHunkNoise(hunk, 'src/foo.ts')).toBeNull();
   });
 
   it('returns null for non-import-capable file types', () => {
@@ -114,7 +111,20 @@ describe('annotateNoise', () => {
     }];
     annotateNoise(files);
     expect(files[0].noise).toBeNull();
-    expect(files[0].hunks[0].noise).toBe('imports-only');
+    expect(files[0].hunks[0].noise).toBeNull();
     expect(files[0].hunks[1].noise).toBeNull();
+  });
+});
+
+
+describe('semantic change preservation', () => {
+  it.each([
+    ['authorize();\ntransferFunds();', 'transferFunds();\nauthorize();'],
+    ['transferFunds();\ntransferFunds();', 'transferFunds();'],
+    ["import './auth';\nimport './transfer';", "import './transfer';\nimport './auth';"],
+    ['if allowed:\n  transfer()', 'if allowed:\ntransfer()'],
+    ['const text = `a\nb`;', 'const text = `a\n\nb`;'],
+  ])('keeps ordered content changes visible', (oldText, newText) => {
+    expect(classifyHunkNoise(mkHunk(oldText, newText), 'source.ts')).toBeNull();
   });
 });
