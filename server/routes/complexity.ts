@@ -1,3 +1,4 @@
+import { cacheGeneration, isCurrentGeneration } from '../services/cacheLifecycle.js';
 import { Router, type Request, type Response } from 'express';
 import { ClaudeRunner, pickModel } from '../services/claudeRunner.js';
 import { getBundle, getGenerated, setGenerated, generatedIdentity } from '../services/cache.js';
@@ -28,6 +29,7 @@ Output EXACTLY ONE WORD from this list and nothing else:
 No preamble. No punctuation. No explanation. Just one of those four words.`;
 
 complexityRouter.get('/api/complexity/stream', (req: Request, res: Response) => {
+  const generation = cacheGeneration();
   const owner = String(req.query.owner ?? '');
   const repo = String(req.query.repo ?? '');
   const number = Number(req.query.number);
@@ -54,7 +56,7 @@ complexityRouter.get('/api/complexity/stream', (req: Request, res: Response) => 
   res.on('error', () => { closed = true; });
   res.on('close', () => { closed = true; });
   const send = (event: string, data: unknown): void => {
-    if (closed) return;
+    if (closed || !isCurrentGeneration(generation)) return;
     try {
       res.write(`event: ${event}\n`);
       res.write(`data: ${JSON.stringify(data)}\n\n`);
@@ -81,7 +83,7 @@ complexityRouter.get('/api/complexity/stream', (req: Request, res: Response) => 
       const valid = ['simple', 'moderate', 'complex', 'unknown'].includes(normalized)
         ? normalized
         : 'unknown';
-      setGenerated(owner, repo, number, headSha, variant, valid);
+      if (isCurrentGeneration(generation)) setGenerated(owner, repo, number, headSha, variant, valid);
       send('done', { text: valid });
       res.end();
     },

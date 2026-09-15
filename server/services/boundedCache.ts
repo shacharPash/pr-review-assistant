@@ -1,3 +1,5 @@
+import { registerCacheClear } from './cacheLifecycle.js';
+
 /** A small process-local cache with absolute expiry and a byte budget. */
 export class BoundedCache<T> {
   private entries = new Map<string, { value: T; expiresAt: number; bytes: number }>();
@@ -7,8 +9,12 @@ export class BoundedCache<T> {
     private readonly ttlMs = 15 * 60_000,
     private readonly maxEntries = 20,
     private readonly maxBytes = 50 * 1024 * 1024,
-    private readonly now = Date.now,
-  ) {}
+    private readonly now = () => Date.now(),
+  ) {
+    registerCacheClear(() => this.clear());
+    const cleanup = setInterval(() => this.prune(), 60_000);
+    cleanup.unref();
+  }
 
   get(key: string): T | undefined {
     this.prune();

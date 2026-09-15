@@ -1,3 +1,5 @@
+import { BoundedCache } from '../services/boundedCache.js';
+import { cacheGeneration, isCurrentGeneration, registerCacheClear } from '../services/cacheLifecycle.js';
 import { findComparison } from '../services/comparisons.js';
 import { comparisonKey } from '../../shared/types.js';
 import { Router, type Request, type Response } from 'express';
@@ -12,10 +14,12 @@ interface FileContentResponse {
   newContent: string | null;
 }
 
-const memo = new Map<string, FileContentResponse>();
+const memo = new BoundedCache<FileContentResponse>(15 * 60_000, 100, 50 * 1024 * 1024);
 const inflight = new Map<string, Promise<FileContentResponse>>();
+registerCacheClear(() => inflight.clear());
 
 fileRouter.get('/api/pr/file', async (req: Request, res: Response) => {
+  const generation = cacheGeneration();
   const owner = String(req.query.owner ?? '');
   const repo = String(req.query.repo ?? '');
   const number = Number(req.query.number);
@@ -48,6 +52,7 @@ fileRouter.get('/api/pr/file', async (req: Request, res: Response) => {
       const result = await pending;
       return res.json(result);
     } catch (err) {
+      if (!isCurrentGeneration(generation)) return res.status(409).json({ error: 'Local data was cleared. Reload the PR.' });
       // fall through to fresh fetch attempt
     }
   }
@@ -62,11 +67,11 @@ fileRouter.get('/api/pr/file', async (req: Request, res: Response) => {
       file.status === 'removed' ? Promise.resolve(null) : fetchFileAtRef(owner, repo, newPath, selected.comparison.headSha),
     ]);
     const result: FileContentResponse = { oldContent, newContent };
-    memo.set(cacheKey, result);
+    if (isCurrentGeneration(generation)) memo.set(cacheKey, result);
     return result;
   })();
 
-  inflight.set(cacheKey, promise);
+  if (isCurrentGeneration(generation)) inflight.set(cacheKey, promise);
   try {
     const result = await promise;
     res.json(result);
@@ -77,6 +82,6 @@ fileRouter.get('/api/pr/file', async (req: Request, res: Response) => {
     const e = err as Error;
     res.status(500).json({ error: 'Unexpected error', detail: e.message });
   } finally {
-    inflight.delete(cacheKey);
+    if (inflight.get(cacheKey) === promise) inflight.delete(cacheKey);
   }
 });

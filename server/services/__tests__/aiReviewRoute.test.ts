@@ -6,9 +6,10 @@ import type { AddressInfo } from 'node:net';
 import { aiReviewRouter } from '../../routes/aiReview.js';
 import { aiChatRouter } from '../../routes/aiChat.js';
 import { ClaudeRunner, type RunnerEvents } from '../claudeRunner.js';
-import { setBundle, setGuidelines } from '../cache.js';
+import { clearCache, getGuidelines, setBundle, setGuidelines } from '../cache.js';
 import type { PRBundle } from '../../../shared/types.js';
-vi.mock('../guidelinesFetcher.js', () => ({ fetchGuidelines: async () => 'Synthetic conventions' }));
+const conventions = vi.hoisted(() => ({ read: vi.fn<() => Promise<string>>() }));
+vi.mock('../guidelinesFetcher.js', () => ({ fetchGuidelines: conventions.read }));
 
 let server: ReturnType<ReturnType<typeof express>['listen']>;
 let base: string;
@@ -22,6 +23,7 @@ let start: ReturnType<typeof spyOnStart>;
 const clean = JSON.stringify({ verdict: 'approve', summary: 'Synthetic assessment', comments: [] });
 beforeEach(async () => {
   number++;
+  conventions.read.mockReset().mockResolvedValue('Synthetic conventions');
   setBundle({ ...synthetic, meta: { ...synthetic.meta, number } });
   output = clean;
   // Stop at the common process boundary. No actual CLI or provider invocation.
@@ -107,4 +109,37 @@ it.each(['review', 'chat'])('delivers the authoritative non-prefix final %s thro
     expect(stream).toContain(JSON.stringify({ type: 'chunk', delta: interim }));
     expect(stream).toContain(JSON.stringify({ type: 'done', text: final }));
   }
+});
+
+
+it('does not restore conventions or start AI when clearing interrupts convention loading', async () => {
+  let finish!: (text: string) => void;
+  conventions.read.mockImplementationOnce(() => new Promise<string>((resolve) => { finish = resolve; }));
+  const pending = review();
+  await vi.waitFor(() => expect(conventions.read).toHaveBeenCalledOnce());
+  clearCache();
+  setBundle({ ...synthetic, meta: { ...synthetic.meta, number } });
+  finish('Private obsolete conventions');
+  const result = await pending;
+  expect(result).not.toContain('event: done');
+  expect(getGuidelines('synthetic', 'repo', number, 'head')).toBeUndefined();
+  expect(start).not.toHaveBeenCalled();
+});
+
+it('does not cache or deliver a late review result after clearing and reopening the same PR', async () => {
+  let oldEvents!: RunnerEvents;
+  start.mockImplementationOnce(function (this: ClaudeRunner) {
+    oldEvents = (this as unknown as { events: RunnerEvents }).events;
+  });
+  const pending = review();
+  await vi.waitFor(() => expect(start).toHaveBeenCalledOnce());
+  clearCache();
+  setBundle({ ...synthetic, meta: { ...synthetic.meta, number } });
+  oldEvents.onChunk(clean);
+  oldEvents.onDone(clean);
+  const result = await pending;
+  expect(result).not.toContain('event: chunk');
+  expect(result).not.toContain('event: done');
+  await review();
+  expect(start).toHaveBeenCalledTimes(2);
 });

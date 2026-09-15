@@ -4,9 +4,9 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const lock = JSON.parse(fs.readFileSync(path.join(root, 'package-lock.json'), 'utf8'));
-const sections = ['Third-party notices for the installed runtime dependencies.\nGenerated from package-lock.json and the installed packages.\nOriginal license and notice text is reproduced below.'];
+const sections = ['Third-party notices for the all installed dependencies (runtime, development and build tools).\nGenerated from package-lock.json and the installed packages.\nOriginal license and notice text is reproduced below.'];
 for (const [relativePath, entry] of Object.entries(lock.packages).sort(([a], [b]) => a.localeCompare(b))) {
-  if (!relativePath || entry.dev) continue;
+  if (!relativePath) continue;
   const directory = path.join(root, relativePath);
   if (!fs.existsSync(directory)) continue; // Optional dependencies for another platform.
   const pkg = JSON.parse(fs.readFileSync(path.join(directory, 'package.json'), 'utf8'));
