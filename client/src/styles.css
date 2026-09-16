@@ -2383,10 +2383,13 @@ button { font: inherit; }
 .landing {
   position: relative;
   display: grid;
-  place-items: center;
-  min-height: 100%;
+  place-items: safe center;
+  /* Fill the space below the header and scroll when the content is taller. */
+  flex: 1 1 auto;
+  min-height: 0;
   padding: 40px 24px 56px;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 /* ----- Animated backdrop: drifting aurora blobs + a masked grid ----- */
