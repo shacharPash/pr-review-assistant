@@ -1,3 +1,4 @@
+import { usePrivacy } from '../state/privacy.js';
 import { useState } from 'react';
 import { useStore } from '../state/store.js';
 import { usePrefs } from '../state/preferences.js';
@@ -30,6 +31,7 @@ function parseBeforeAfter(raw: string): BeforeAfter | null {
 }
 
 export function SummaryCard() {
+  const aiEnabled = usePrivacy((s) => s.aiEnabled);
   const bundle = useStore((s) => s.bundle);
   const headline = useStore((s) => s.headline);
   const beforeAfter = useStore((s) => s.beforeAfter);
@@ -37,7 +39,7 @@ export function SummaryCard() {
   const toggleSummary = usePrefs((s) => s.toggleSummary);
   const [collapsed, setCollapsed] = useState(false);
 
-  if (!bundle) return null;
+  if (!bundle || !aiEnabled) return null;
 
   const ba = beforeAfter.status === 'done' ? parseBeforeAfter(beforeAfter.text) : null;
 

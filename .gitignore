@@ -17,3 +17,7 @@ npm-debug.log*
 
 # Visual brainstorming companion (local-only)
 .superpowers/
+
+# Generated from installed dependency licenses during build.
+client/public/THIRD_PARTY_NOTICES.txt
+client/public/PRIVACY.md

@@ -1,6 +1,7 @@
+import { cacheGeneration, isCurrentGeneration } from '../services/cacheLifecycle.js';
 import { Router, type Request, type Response } from 'express';
 import { ClaudeRunner, pickModel } from '../services/claudeRunner.js';
-import { getBundle, getDiagram, setDiagram } from '../services/cache.js';
+import { getBundle, getGenerated, setGenerated, generatedIdentity } from '../services/cache.js';
 
 export const diagramRouter = Router();
 
@@ -32,6 +33,7 @@ or
 No preamble, no explanation, no commentary. Just one or the other.`;
 
 diagramRouter.get('/api/diagram/stream', (req: Request, res: Response) => {
+  const generation = cacheGeneration();
   const owner = String(req.query.owner ?? '');
   const repo = String(req.query.repo ?? '');
   const number = Number(req.query.number);
@@ -58,7 +60,7 @@ diagramRouter.get('/api/diagram/stream', (req: Request, res: Response) => {
   res.on('error', () => { closed = true; });
   res.on('close', () => { closed = true; });
   const send = (event: string, data: unknown): void => {
-    if (closed) return;
+    if (closed || !isCurrentGeneration(generation)) return;
     try {
       res.write(`event: ${event}\n`);
       res.write(`data: ${JSON.stringify(data)}\n\n`);
@@ -67,10 +69,11 @@ diagramRouter.get('/api/diagram/stream', (req: Request, res: Response) => {
     }
   };
 
-  const cached = getDiagram(owner, repo, number, headSha);
+  const variant = generatedIdentity(bundle, 'diagram', pickModel(req.query.mode, 'heavy'));
+  const cached = req.query.retry === '1' ? undefined : getGenerated(owner, repo, number, headSha, variant);
   if (cached !== undefined) {
     send('chunk', cached);
-    send('done', '');
+    send('done', { text: cached });
     res.end();
     return;
   }
@@ -79,8 +82,8 @@ diagramRouter.get('/api/diagram/stream', (req: Request, res: Response) => {
     onChunk: (delta) => send('chunk', delta),
     onUsage: (usage) => send('usage', usage),
     onDone: (full) => {
-      setDiagram(owner, repo, number, headSha, full.trim());
-      send('done', '');
+      if (isCurrentGeneration(generation)) setGenerated(owner, repo, number, headSha, variant, full.trim());
+      send('done', { text: full });
       res.end();
     },
     onError: (msg) => {
@@ -89,6 +92,6 @@ diagramRouter.get('/api/diagram/stream', (req: Request, res: Response) => {
     },
   });
 
-  req.on('close', () => runner.abort());
+  res.on('close', () => runner.abort());
   runner.start(bundle, { systemPrompt: DIAGRAM_PROMPT, model: pickModel(req.query.mode, 'heavy') });
 });

@@ -1,12 +1,18 @@
+import { isAIEnabled } from './privacy.js';
+import { requestGuard, sessionFetch, sessionStream, invalidateSession, invalidateComparison } from './session.js';
 import { create } from 'zustand';
+import { comparisonKey, prComparison, type Comparison } from '@shared/types';
 import type { PRBundle, DiffFile, TLDR, BlameRange } from '@shared/types';
 import type { PersonaId } from '@shared/personas';
 import type { PRComments } from '@shared/reviewComments';
+import { parseAIReview, resolveAIReviewComment, type AIReviewComment } from '@shared/aiReview';
+import type { ChatMessage, AiChatEvent } from '@shared/aiChat';
 import type { CheckRun } from '@shared/checks';
 import { EMPTY_USAGE, addUsage, type TokenUsage } from '@shared/usage';
 import { usePrefs } from './preferences.js';
 
 export interface FullFileContent {
+  comparisonKey?: string;
   status: 'loading' | 'ready' | 'error';
   oldContent: string | null;
   newContent: string | null;
@@ -25,7 +31,14 @@ export interface LineComment {
   startLine?: number;
 }
 
-export type TLDRTab = 'brief' | PersonaId | 'activity';
+export type TLDRTab = 'ai-review' | 'ask' | PersonaId | 'activity';
+
+/** Multi-turn PR chat state (in-memory only; resets when a new PR loads). */
+export interface ChatState {
+  messages: ChatMessage[];
+  status: 'idle' | 'streaming' | 'error';
+  error?: string;
+}
 
 export type ScopeKind = 'all' | 'commit' | 'since-review';
 
@@ -42,7 +55,21 @@ interface State {
   loading: boolean;
   error: { message: string; detail?: string } | null;
   showNoise: boolean;
-  tldr: TLDR;
+  aiReview: TLDR;
+  /**
+   * Wall-clock start of the current AI Review run (epoch ms), or null when not
+   * streaming. Lives in the store , not local component state , so the elapsed
+   * timer keeps counting correctly across tab switches that unmount the pane.
+   */
+  aiReviewStartedAt: number | null;
+  /** In-memory PR chat (the "Ask" tab). Not persisted. */
+  chat: ChatState;
+  /**
+   * Whether the Ask chat scopes answers to the currently-open file (sent as
+   * `focus`). Sticky for the session, default on. Turn off to ask general
+   * questions about the whole PR.
+   */
+  chatUseFocus: boolean;
   headline: TLDR;
   diagram: TLDR;
   beforeAfter: TLDR;
@@ -58,15 +85,29 @@ interface State {
    * `startLine` is set when the comment covers a multi-line range.
    */
   lineComments: Record<string, Record<number, LineComment>>;
-  /** Currently-focused range for the inline composer; null when closed. */
-  composerTarget: { path: string; line: number; startLine: number } | null;
+  /**
+   * Currently-focused range for the inline composer; null when closed.
+   * `prefill` seeds the composer's draft (used when jumping in from an AI
+   * Review suggestion so the suggested text is already in the box).
+   */
+  composerTarget: { path: string; line: number; startLine: number; prefill?: string } | null;
+  /**
+   * A one-shot request to reveal a diff line and open the composer there,
+   * set by `jumpToSuggestion` and consumed by DiffViewer once the target
+   * file's editor is mounted. `nonce` lets repeat jumps to the same line
+   * re-fire. null when nothing is pending.
+   */
+  pendingReveal: { path: string; line: number; startLine: number; prefill: string; nonce: number } | null;
   reviewSummary: string;
-  postingReview: { status: 'idle' | 'posting' | 'done' | 'error'; message?: string; url?: string };
+  postingReview: { status: 'idle' | 'posting' | 'done' | 'error' | 'uncertain'; message?: string; url?: string };
   /** Active scope filter. 'all' = show full PR. */
   scope: SelectedScope;
   /** When set, replaces bundle.files for display. null = use bundle.files. */
   scopedFiles: DiffFile[] | null;
   scopeLoading: boolean;
+  scopeError: string | null;
+  comparison: Comparison | null;
+  acknowledgeUncertainReview: () => void;
   /** SHA we last successfully posted a review at, per (owner/repo#number). null when none. */
   lastReviewedSha: string | null;
   /** Existing review comments + summaries from other reviewers / bots. */
@@ -113,8 +154,18 @@ interface State {
   resetHunkExpansion: (path: string, hunkIdx: number) => void;
   selectFile: (path: string) => void;
   toggleNoise: () => void;
-  startTLDR: () => void;
-  retryTLDR: () => void;
+  retryAIReview: () => void;
+  /** Ask a question in the PR chat; streams the answer into `chat`. */
+  askChat: (question: string) => Promise<void>;
+  /** Clear the PR chat conversation. */
+  resetChat: () => void;
+  /** Toggle whether the Ask chat scopes answers to the open file. */
+  toggleChatFocus: () => void;
+  /** Jump the diff to a suggested comment's line and open the composer pre-filled. */
+  jumpToSuggestion: (c: AIReviewComment) => void;
+  /** Clear a consumed pending-reveal request (called by DiffViewer). */
+  clearPendingReveal: () => void;
+  startDiagram: () => void;
   fetchFullContent: (path: string) => Promise<void>;
   fetchBlame: (path: string) => Promise<void>;
   selectTab: (tab: TLDRTab) => void;
@@ -123,20 +174,35 @@ interface State {
   setComment: (path: string, body: string) => void;
   setLineComment: (path: string, line: number, body: string, startLine?: number) => void;
   removeLineComment: (path: string, line: number) => void;
-  openComposer: (path: string, startLine: number, endLine: number) => void;
+  openComposer: (path: string, startLine: number, endLine: number, prefill?: string) => void;
   closeComposer: () => void;
   setReviewSummary: (text: string) => void;
   postReview: (event: 'APPROVE' | 'REQUEST_CHANGES' | 'COMMENT') => Promise<void>;
 }
 
 const emptyTLDR: TLDR = { text: '', status: 'idle' };
+const emptyChat: ChatState = { messages: [], status: 'idle' };
 
-let tldrEventSource: EventSource | null = null;
+// PR chat streams over POST (fetch), so it uses an AbortController rather than
+// an EventSource. Kept at module scope so a new question / new PR aborts any
+// in-flight answer.
+let chatAbort: AbortController | null = null;
+let aiReviewEventSource: EventSource | null = null;
 let headlineEventSource: EventSource | null = null;
 let diagramEventSource: EventSource | null = null;
 let beforeAfterEventSource: EventSource | null = null;
 let complexityEventSource: EventSource | null = null;
 const personaEventSources = new Map<PersonaId, EventSource>();
+
+function draftIdentity(bundle: PRBundle): string {
+  const m = bundle.meta;
+  return `${m.owner}/${m.repo}#${m.number}:${m.headSha}`;
+}
+function summaryStorageKey(bundle: PRBundle): string { return `pra.summary:${draftIdentity(bundle)}`; }
+function submissionStorageKey(bundle: PRBundle): string { return `pra.submission:${draftIdentity(bundle)}`; }
+function afterDraftEdit(posting: State['postingReview']): State['postingReview'] {
+  return posting.status === 'posting' || posting.status === 'uncertain' ? posting : { status: 'idle' };
+}
 
 function reviewedStorageKey(headSha: string): string {
   return `pra.reviewed:${headSha}`;
@@ -179,7 +245,7 @@ type StoreSetter = (
  * mid-flight stream keeps its mode even if the picker changes.
  */
 function modeParam(): string {
-  return `&mode=${usePrefs.getState().modelPreference}`;
+  return `&mode=${usePrefs.getState().modelPreference}&aiConsent=1`;
 }
 
 function attachUsageListener(es: EventSource, set: StoreSetter): void {
@@ -193,7 +259,15 @@ function attachUsageListener(es: EventSource, set: StoreSetter): void {
   });
 }
 
+function finalStreamText(event: MessageEvent): string | undefined {
+  try {
+    const result = JSON.parse(event.data) as { text?: unknown };
+    return typeof result?.text === 'string' ? result.text : undefined;
+  } catch { return undefined; }
+}
+
 function openComplexityStream(bundle: PRBundle, set: StoreSetter) {
+  if (!isAIEnabled()) return;
   if (complexityEventSource) {
     complexityEventSource.close();
     complexityEventSource = null;
@@ -203,7 +277,7 @@ function openComplexityStream(bundle: PRBundle, set: StoreSetter) {
     `&number=${bundle.meta.number}` +
     `&headSha=${bundle.meta.headSha}` +
     modeParam();
-  const es = new EventSource(url);
+  const es = sessionStream(url);
   complexityEventSource = es;
   set({ complexity: { text: '', status: 'streaming' } });
   attachUsageListener(es, set);
@@ -215,8 +289,11 @@ function openComplexityStream(bundle: PRBundle, set: StoreSetter) {
     acc += decode(e.data);
     set({ complexity: { text: acc, status: 'streaming' } });
   });
-  es.addEventListener('done', () => {
-    set({ complexity: { text: acc.trim().toLowerCase(), status: 'done' } });
+  es.addEventListener('done', (event: MessageEvent) => {
+    const text = finalStreamText(event);
+    set({ complexity: text === undefined
+      ? { text: acc, status: 'error', error: 'The stream ended without a complete final result.' }
+      : { text: text.trim().toLowerCase(), status: 'done' } });
     es.close();
     complexityEventSource = null;
   });
@@ -229,6 +306,7 @@ function openComplexityStream(bundle: PRBundle, set: StoreSetter) {
 }
 
 function openBeforeAfterStream(bundle: PRBundle, set: StoreSetter) {
+  if (!isAIEnabled()) return;
   if (beforeAfterEventSource) {
     beforeAfterEventSource.close();
     beforeAfterEventSource = null;
@@ -238,7 +316,7 @@ function openBeforeAfterStream(bundle: PRBundle, set: StoreSetter) {
     `&number=${bundle.meta.number}` +
     `&headSha=${bundle.meta.headSha}` +
     modeParam();
-  const es = new EventSource(url);
+  const es = sessionStream(url);
   beforeAfterEventSource = es;
   set({ beforeAfter: { text: '', status: 'streaming' } });
   attachUsageListener(es, set);
@@ -250,8 +328,11 @@ function openBeforeAfterStream(bundle: PRBundle, set: StoreSetter) {
     acc += decode(e.data);
     set({ beforeAfter: { text: acc, status: 'streaming' } });
   });
-  es.addEventListener('done', () => {
-    set({ beforeAfter: { text: acc.trim(), status: 'done' } });
+  es.addEventListener('done', (event: MessageEvent) => {
+    const text = finalStreamText(event);
+    set({ beforeAfter: text === undefined
+      ? { text: acc, status: 'error', error: 'The stream ended without a complete final result.' }
+      : { text: text.trim(), status: 'done' } });
     es.close();
     beforeAfterEventSource = null;
   });
@@ -264,6 +345,7 @@ function openBeforeAfterStream(bundle: PRBundle, set: StoreSetter) {
 }
 
 function openDiagramStream(bundle: PRBundle, set: StoreSetter) {
+  if (!isAIEnabled()) return;
   if (diagramEventSource) {
     diagramEventSource.close();
     diagramEventSource = null;
@@ -273,7 +355,7 @@ function openDiagramStream(bundle: PRBundle, set: StoreSetter) {
     `&number=${bundle.meta.number}` +
     `&headSha=${bundle.meta.headSha}` +
     modeParam();
-  const es = new EventSource(url);
+  const es = sessionStream(url);
   diagramEventSource = es;
   set({ diagram: { text: '', status: 'streaming' } });
   attachUsageListener(es, set);
@@ -285,8 +367,11 @@ function openDiagramStream(bundle: PRBundle, set: StoreSetter) {
     acc += decode(e.data);
     set({ diagram: { text: acc, status: 'streaming' } });
   });
-  es.addEventListener('done', () => {
-    set({ diagram: { text: acc.trim(), status: 'done' } });
+  es.addEventListener('done', (event: MessageEvent) => {
+    const text = finalStreamText(event);
+    set({ diagram: text === undefined
+      ? { text: acc, status: 'error', error: 'The stream ended without a complete final result.' }
+      : { text: text.trim(), status: 'done' } });
     es.close();
     diagramEventSource = null;
   });
@@ -299,6 +384,7 @@ function openDiagramStream(bundle: PRBundle, set: StoreSetter) {
 }
 
 function openHeadlineStream(bundle: PRBundle, set: StoreSetter) {
+  if (!isAIEnabled()) return;
   if (headlineEventSource) {
     headlineEventSource.close();
     headlineEventSource = null;
@@ -308,7 +394,7 @@ function openHeadlineStream(bundle: PRBundle, set: StoreSetter) {
     `&number=${bundle.meta.number}` +
     `&headSha=${bundle.meta.headSha}` +
     modeParam();
-  const es = new EventSource(url);
+  const es = sessionStream(url);
   headlineEventSource = es;
   set({ headline: { text: '', status: 'streaming' } });
   attachUsageListener(es, set);
@@ -322,8 +408,11 @@ function openHeadlineStream(bundle: PRBundle, set: StoreSetter) {
     acc += decode(e.data);
     set({ headline: { text: acc, status: 'streaming' } });
   });
-  es.addEventListener('done', () => {
-    set({ headline: { text: acc.trim(), status: 'done' } });
+  es.addEventListener('done', (event: MessageEvent) => {
+    const text = finalStreamText(event);
+    set({ headline: text === undefined
+      ? { text: acc, status: 'error', error: 'The stream ended without a complete final result.' }
+      : { text: text.trim(), status: 'done' } });
     es.close();
     headlineEventSource = null;
   });
@@ -335,20 +424,23 @@ function openHeadlineStream(bundle: PRBundle, set: StoreSetter) {
   });
 }
 
-function openTLDRStream(bundle: PRBundle, set: StoreSetter) {
-  if (tldrEventSource) {
-    tldrEventSource.close();
-    tldrEventSource = null;
+function openAIReviewStream(bundle: PRBundle, set: StoreSetter, refresh = false) {
+  if (!isAIEnabled()) return;
+  if (aiReviewEventSource) {
+    aiReviewEventSource.close();
+    aiReviewEventSource = null;
   }
-  const url = `/api/tldr/stream?owner=${encodeURIComponent(bundle.meta.owner)}` +
+  const url = `/api/ai-review/stream?owner=${encodeURIComponent(bundle.meta.owner)}` +
     `&repo=${encodeURIComponent(bundle.meta.repo)}` +
     `&number=${bundle.meta.number}` +
     `&headSha=${bundle.meta.headSha}` +
-    modeParam();
-  const es = new EventSource(url);
-  tldrEventSource = es;
-  set({ tldr: { text: '', status: 'streaming' } });
-  attachUsageListener(es, set);
+    modeParam() + (refresh ? '&refresh=1' : '');
+  const es = sessionStream(url);
+  aiReviewEventSource = es;
+  set({ aiReview: { text: '', status: 'streaming' }, aiReviewStartedAt: Date.now() });
+  const current = () => aiReviewEventSource === es;
+  const guardedSet: StoreSetter = (value) => { if (current()) set(value); };
+  attachUsageListener(es, guardedSet);
   let acc = '';
 
   const decode = (raw: string): string => {
@@ -356,21 +448,30 @@ function openTLDRStream(bundle: PRBundle, set: StoreSetter) {
   };
 
   es.addEventListener('chunk', (e: MessageEvent) => {
+    if (!current()) return;
     acc += decode(e.data);
-    set({ tldr: { text: acc, status: 'streaming' } });
+    set({ aiReview: { text: acc, status: 'streaming' } });
   });
-  es.addEventListener('done', () => {
-    set({ tldr: { text: acc, status: 'done' } });
+  es.addEventListener('done', (event: MessageEvent) => {
+    if (!current()) return;
+    let final: unknown;
+    try { final = JSON.parse(event.data)?.text; } catch { /* invalid terminal payload */ }
+    if (typeof final === 'string' && parseAIReview(final)) {
+      set({ aiReview: { text: final, status: 'done' } });
+    } else {
+      set({ aiReview: { text: '', status: 'error', error: 'AI review ended without a valid final result. Re-run to try again.' } });
+    }
     es.close();
-    tldrEventSource = null;
+    aiReviewEventSource = null;
   });
   es.addEventListener('error', (e: MessageEvent) => {
+    if (!current()) return;
     // EventSource fires plain 'error' for network drops (no e.data). Custom
     // 'error' SSE events arrive here too with a decodable payload.
-    const msg = e?.data ? decode(e.data) : 'TL;DR stream failed.';
-    set({ tldr: { text: acc, status: 'error', error: msg } });
+    const msg = e?.data ? decode(e.data) : 'AI Review stream failed.';
+    set({ aiReview: { text: acc, status: 'error', error: msg } });
     es.close();
-    tldrEventSource = null;
+    aiReviewEventSource = null;
   });
 }
 
@@ -388,7 +489,10 @@ export const useStore = create<State>((set, get) => ({
   loading: false,
   error: null,
   showNoise: false,
-  tldr: emptyTLDR,
+  aiReview: emptyTLDR,
+  aiReviewStartedAt: null,
+  chat: emptyChat,
+  chatUseFocus: true,
   headline: emptyTLDR,
   diagram: emptyTLDR,
   beforeAfter: emptyTLDR,
@@ -399,11 +503,14 @@ export const useStore = create<State>((set, get) => ({
   comments: {},
   lineComments: {},
   composerTarget: null,
+  pendingReveal: null,
   reviewSummary: '',
   postingReview: { status: 'idle' },
   scope: { kind: 'all', label: 'All commits' },
   scopedFiles: null,
   scopeLoading: false,
+  scopeError: null,
+  comparison: null,
   lastReviewedSha: null,
   reviewComments: null,
   reviewCommentsStatus: 'idle',
@@ -414,10 +521,20 @@ export const useStore = create<State>((set, get) => ({
   tokenUsage: EMPTY_USAGE,
 
   async loadPR(ref) {
+    aiReviewEventSource?.close();
+    aiReviewEventSource = null;
+    chatAbort?.abort();
+    chatAbort = null;
+    invalidateSession();
+    const current = requestGuard('loadPR');
     set({
+      bundle: null, activeFilePath: null, comparison: null,
+      lineComments: {}, reviewSummary: '',
       loading: true,
       error: null,
-      tldr: emptyTLDR,
+      aiReview: emptyTLDR,
+      aiReviewStartedAt: null,
+      chat: emptyChat,
       headline: emptyTLDR,
       diagram: emptyTLDR,
       beforeAfter: emptyTLDR,
@@ -429,9 +546,12 @@ export const useStore = create<State>((set, get) => ({
       postingReview: { status: 'idle' },
       personaResults: {},
       activeTab: 'explain',
+      composerTarget: null,
+      pendingReveal: null,
       scope: { kind: 'all', label: 'All commits' },
       scopedFiles: null,
       scopeLoading: false,
+      scopeError: null,
       lastReviewedSha: null,
       reviewComments: null,
       reviewCommentsStatus: 'idle',
@@ -442,19 +562,20 @@ export const useStore = create<State>((set, get) => ({
       tokenUsage: EMPTY_USAGE,
     });
     try {
-      const res = await fetch(`/api/pr?ref=${encodeURIComponent(ref)}`);
+      const res = await sessionFetch(`/api/pr?ref=${encodeURIComponent(ref)}`);
       const data = await res.json();
+      if (!current()) return;
       if (!res.ok) {
         set({ loading: false, error: { message: data.error ?? 'Failed', detail: data.detail } });
         return;
       }
       const bundle = data as PRBundle;
-      const firstVisible = bundle.files.find((f) => !f.noise) ?? bundle.files[0];
+      const firstVisible = bundle.files.find((f) => get().showNoise || !f.noise);
       // Restore reviewed + comments scoped to this headSha (resets if PR has new commits).
-      const reviewed = readJSON<Record<string, boolean>>(reviewedStorageKey(bundle.meta.headSha), {});
-      const comments = readJSON<Record<string, string>>(commentsStorageKey(bundle.meta.headSha), {});
+      const reviewed = readJSON<Record<string, boolean>>(reviewedStorageKey(draftIdentity(bundle)), {});
+      const comments = readJSON<Record<string, string>>(commentsStorageKey(draftIdentity(bundle)), {});
       const lineComments = readJSON<Record<string, Record<number, LineComment>>>(
-        lineCommentsStorageKey(bundle.meta.headSha),
+        lineCommentsStorageKey(draftIdentity(bundle)),
         {},
       );
       const lastReviewedSha = readJSON<string | null>(
@@ -468,6 +589,9 @@ export const useStore = create<State>((set, get) => ({
         reviewed,
         comments,
         lineComments,
+        reviewSummary: readJSON<string>(summaryStorageKey(bundle), ''),
+        postingReview: readJSON<State['postingReview']>(submissionStorageKey(bundle), { status: 'idle' }),
+        comparison: prComparison(bundle),
         lastReviewedSha,
       });
       // Reflect the loaded PR in the URL so refresh / share-link both work.
@@ -477,9 +601,8 @@ export const useStore = create<State>((set, get) => ({
         const shorthand = `${bundle.meta.owner}/${bundle.meta.repo}#${bundle.meta.number}`;
         window.history.replaceState(null, '', `/?pr=${encodeURIComponent(shorthand)}`);
       }
-      openTLDRStream(bundle, set);
+      // Header insights start only with consent. Other panels start when opened.
       openHeadlineStream(bundle, set);
-      openDiagramStream(bundle, set);
       openBeforeAfterStream(bundle, set);
       openComplexityStream(bundle, set);
       // Reviewer/bot comments — non-blocking; UI shows once they arrive.
@@ -491,22 +614,27 @@ export const useStore = create<State>((set, get) => ({
         get().fetchBlame(firstVisible.path);
       }
     } catch (err) {
+      if (!current()) return;
       set({ loading: false, error: { message: (err as Error).message } });
     }
   },
 
   async selectScope(scope) {
+    invalidateComparison();
+    const current = requestGuard('selectScope', true);
     const { bundle } = get();
     if (!bundle) return;
 
+    set({ fullContent: {}, blame: {}, hunkExpansions: {}, composerTarget: null, pendingReveal: null,
+      activeFilePath: null, comparison: null, error: null, scopeError: null });
     if (scope.kind === 'all') {
-      set({ scope, scopedFiles: null, scopeLoading: false });
-      const firstVisible = bundle.files.find((f) => !f.noise) ?? bundle.files[0];
-      if (firstVisible) set({ activeFilePath: firstVisible.path });
+      set({ scope, scopedFiles: null, scopeLoading: false, comparison: prComparison(bundle) });
+      const firstVisible = bundle.files.find((f) => get().showNoise || !f.noise);
+      if (firstVisible) get().selectFile(firstVisible.path);
       return;
     }
 
-    set({ scope, scopeLoading: true });
+    set({ scope, scopeLoading: true, scopedFiles: [] });
     try {
       const params = new URLSearchParams({
         owner: bundle.meta.owner,
@@ -524,24 +652,28 @@ export const useStore = create<State>((set, get) => ({
         params.set('kind', 'range');
         params.set('base', scope.baseSha);
       }
-      const res = await fetch(`/api/pr/scoped-diff?${params}`);
+      const res = await sessionFetch(`/api/pr/scoped-diff?${params}`);
       const data = await res.json();
+      if (!current()) return;
       if (!res.ok) {
         set({
           scopeLoading: false,
-          error: { message: data.error ?? 'Failed to scope diff', detail: data.detail },
+          scopeError: data.error ?? 'Failed to load comparison. Select All commits to continue.',
         });
         return;
       }
       const files = data.files as DiffFile[];
-      const firstVisible = files.find((f) => !f.noise) ?? files[0];
+      const firstVisible = files.find((f) => get().showNoise || !f.noise);
       set({
         scopedFiles: files,
+        comparison: data.comparison as Comparison,
         scopeLoading: false,
         activeFilePath: firstVisible?.path ?? null,
       });
+      if (firstVisible) get().selectFile(firstVisible.path);
     } catch (err) {
-      set({ scopeLoading: false, error: { message: (err as Error).message } });
+      if (!current()) return;
+      set({ scopeLoading: false, scopeError: (err as Error).message });
     }
   },
 
@@ -581,6 +713,7 @@ export const useStore = create<State>((set, get) => ({
   },
 
   async fetchReviewComments() {
+    const current = requestGuard('fetchReviewComments', false);
     const { bundle } = get();
     if (!bundle) return;
     set({ reviewCommentsStatus: 'loading', reviewCommentsError: undefined });
@@ -588,9 +721,10 @@ export const useStore = create<State>((set, get) => ({
       const url = `/api/pr/review-comments?owner=${encodeURIComponent(bundle.meta.owner)}` +
         `&repo=${encodeURIComponent(bundle.meta.repo)}` +
         `&number=${bundle.meta.number}` +
-        `&headSha=${bundle.meta.headSha}`;
-      const res = await fetch(url);
+        `&headSha=${bundle.meta.headSha}&refresh=1`;
+      const res = await sessionFetch(url);
       const data = await res.json();
+      if (!current()) return;
       if (!res.ok) {
         set({
           reviewCommentsStatus: 'error',
@@ -600,6 +734,7 @@ export const useStore = create<State>((set, get) => ({
       }
       set({ reviewComments: data as PRComments, reviewCommentsStatus: 'ready' });
     } catch (err) {
+      if (!current()) return;
       set({
         reviewCommentsStatus: 'error',
         reviewCommentsError: (err as Error).message,
@@ -608,11 +743,12 @@ export const useStore = create<State>((set, get) => ({
   },
 
   async replyToThread(threadId, inReplyTo, body) {
+    const current = requestGuard('replyToThread' + ':' + threadId, false);
     const { bundle } = get();
     if (!bundle) return;
     set((s) => ({ threadActions: { ...s.threadActions, [threadId]: { status: 'pending' } } }));
     try {
-      const res = await fetch('/api/pr/review-comments/reply', {
+      const res = await sessionFetch('/api/pr/review-comments/reply', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -622,12 +758,14 @@ export const useStore = create<State>((set, get) => ({
         }),
       });
       const data = await res.json();
+      if (!current()) return;
       if (!res.ok || !data.ok) throw new Error(data.error ?? 'Reply failed.');
       set((s) => ({
         reviewComments: data.comments as PRComments,
         threadActions: { ...s.threadActions, [threadId]: { status: 'idle' } },
       }));
     } catch (err) {
+      if (!current()) return;
       set((s) => ({
         threadActions: { ...s.threadActions, [threadId]: { status: 'error', message: (err as Error).message } },
       }));
@@ -635,11 +773,12 @@ export const useStore = create<State>((set, get) => ({
   },
 
   async setThreadResolved(threadId, resolved) {
+    const current = requestGuard('setThreadResolved' + ':' + threadId, false);
     const { bundle } = get();
     if (!bundle) return;
     set((s) => ({ threadActions: { ...s.threadActions, [threadId]: { status: 'pending' } } }));
     try {
-      const res = await fetch('/api/pr/review-comments/resolve', {
+      const res = await sessionFetch('/api/pr/review-comments/resolve', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -649,12 +788,14 @@ export const useStore = create<State>((set, get) => ({
         }),
       });
       const data = await res.json();
+      if (!current()) return;
       if (!res.ok || !data.ok) throw new Error(data.error ?? 'Resolve failed.');
       set((s) => ({
         reviewComments: data.comments as PRComments,
         threadActions: { ...s.threadActions, [threadId]: { status: 'idle' } },
       }));
     } catch (err) {
+      if (!current()) return;
       set((s) => ({
         threadActions: { ...s.threadActions, [threadId]: { status: 'error', message: (err as Error).message } },
       }));
@@ -666,6 +807,7 @@ export const useStore = create<State>((set, get) => ({
   },
 
   async fetchChecks() {
+    const current = requestGuard('fetchChecks', false);
     const { bundle } = get();
     if (!bundle) return;
     set({ checks: { status: 'loading', runs: [] } });
@@ -673,19 +815,22 @@ export const useStore = create<State>((set, get) => ({
       const url = `/api/pr/checks?owner=${encodeURIComponent(bundle.meta.owner)}` +
         `&repo=${encodeURIComponent(bundle.meta.repo)}` +
         `&number=${bundle.meta.number}`;
-      const res = await fetch(url);
+      const res = await sessionFetch(url);
       const data = await res.json();
+      if (!current()) return;
       if (!res.ok) {
         set({ checks: { status: 'error', runs: [], error: data.error ?? 'Failed to load checks.' } });
         return;
       }
       set({ checks: { status: 'ready', runs: (data.runs ?? []) as CheckRun[] } });
     } catch (err) {
+      if (!current()) return;
       set({ checks: { status: 'error', runs: [], error: (err as Error).message } });
     }
   },
 
   selectFile(path) {
+    if (!selectDisplayFiles(get()).some((f) => f.path === path && (get().showNoise || !f.noise))) return;
     set({ activeFilePath: path });
     if (!get().fullContent[path]) get().fetchFullContent(path);
     if (!get().blame[path]) get().fetchBlame(path);
@@ -693,31 +838,37 @@ export const useStore = create<State>((set, get) => ({
 
   async fetchBlame(path) {
     const { bundle, blame } = get();
-    if (!bundle) return;
+    if (!bundle || !get().comparison || get().scopeLoading) return;
+    const identity = comparisonKey(get().comparison!);
     if (blame[path]?.status === 'ready' || blame[path]?.status === 'loading') return;
+    const current = requestGuard('fetchBlame' + ':' + path, true);
     set({ blame: { ...get().blame, [path]: { status: 'loading', ranges: [] } } });
     try {
       const url = `/api/blame?owner=${encodeURIComponent(bundle.meta.owner)}` +
         `&repo=${encodeURIComponent(bundle.meta.repo)}` +
         `&number=${bundle.meta.number}` +
         `&headSha=${bundle.meta.headSha}` +
-        `&path=${encodeURIComponent(path)}`;
-      const res = await fetch(url);
+        `&path=${encodeURIComponent(path)}&comparison=${encodeURIComponent(identity)}`;
+      const res = await sessionFetch(url);
       const data = await res.json();
+      if (!current()) return;
       if (!res.ok) {
         set({ blame: { ...get().blame, [path]: { status: 'error', ranges: [], error: data.error } } });
         return;
       }
       set({ blame: { ...get().blame, [path]: { status: 'ready', ranges: data.ranges ?? [] } } });
     } catch (err) {
+      if (!current()) return;
       set({ blame: { ...get().blame, [path]: { status: 'error', ranges: [], error: (err as Error).message } } });
     }
   },
 
   async fetchFullContent(path) {
     const { bundle, fullContent } = get();
-    if (!bundle) return;
+    if (!bundle || !get().comparison || get().scopeLoading) return;
+    const identity = comparisonKey(get().comparison!);
     if (fullContent[path]?.status === 'ready' || fullContent[path]?.status === 'loading') return;
+    const current = requestGuard('fetchFullContent' + ':' + path, true);
 
     set({
       fullContent: {
@@ -731,9 +882,10 @@ export const useStore = create<State>((set, get) => ({
         `&repo=${encodeURIComponent(bundle.meta.repo)}` +
         `&number=${bundle.meta.number}` +
         `&headSha=${bundle.meta.headSha}` +
-        `&path=${encodeURIComponent(path)}`;
-      const res = await fetch(url);
+        `&path=${encodeURIComponent(path)}&comparison=${encodeURIComponent(identity)}`;
+      const res = await sessionFetch(url);
       const data = await res.json();
+      if (!current()) return;
       if (!res.ok) {
         set({
           fullContent: {
@@ -746,10 +898,11 @@ export const useStore = create<State>((set, get) => ({
       set({
         fullContent: {
           ...get().fullContent,
-          [path]: { status: 'ready', oldContent: data.oldContent, newContent: data.newContent },
+          [path]: { status: 'ready', comparisonKey: identity, oldContent: data.oldContent, newContent: data.newContent },
         },
       });
     } catch (err) {
+      if (!current()) return;
       set({
         fullContent: {
           ...get().fullContent,
@@ -760,17 +913,142 @@ export const useStore = create<State>((set, get) => ({
   },
 
   toggleNoise() {
-    set({ showNoise: !get().showNoise });
+    const showNoise = !get().showNoise;
+    set({ showNoise });
+    const visible = selectDisplayFiles(get()).filter((f) => showNoise || !f.noise);
+    if (!visible.some((f) => f.path === get().activeFilePath)) {
+      set({ activeFilePath: null, composerTarget: null });
+      if (visible[0]) get().selectFile(visible[0].path);
+    }
   },
 
-  startTLDR() {
+  retryAIReview() {
     const b = get().bundle;
-    if (b) openTLDRStream(b, set);
+    if (b) openAIReviewStream(b, set, true);
   },
 
-  retryTLDR() {
-    const b = get().bundle;
-    if (b) openTLDRStream(b, set);
+  async askChat(question) {
+    if (!isAIEnabled()) return;
+    const q = question.trim();
+    const { bundle, chat } = get();
+    if (!bundle || !q || chat.status === 'streaming') return;
+
+    // Optimistically append the user's turn plus an empty assistant turn we
+    // stream deltas into. History sent to the server excludes that placeholder.
+    const messages: ChatMessage[] = [
+      ...chat.messages,
+      { role: 'user', content: q },
+      { role: 'assistant', content: '' },
+    ];
+    set({ chat: { messages, status: 'streaming' } });
+    const history = messages.slice(0, -1);
+    const focusPath = get().chatUseFocus ? get().activeFilePath : null;
+
+    chatAbort?.abort();
+    chatAbort = new AbortController();
+    const controller = chatAbort;
+    const { signal } = controller;
+    const current = () => chatAbort === controller && !signal.aborted && get().bundle === bundle;
+
+    const appendDelta = (delta: string): void => {
+      if (!current()) return;
+      set((s) => {
+        const msgs = s.chat.messages.slice();
+        const last = msgs[msgs.length - 1];
+        if (last && last.role === 'assistant') {
+          msgs[msgs.length - 1] = { ...last, content: last.content + delta };
+        }
+        return { chat: { ...s.chat, messages: msgs } };
+      });
+    };
+
+    try {
+      const res = await fetch('/api/ai-chat/stream?aiConsent=1', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal,
+        body: JSON.stringify({
+          owner: bundle.meta.owner,
+          repo: bundle.meta.repo,
+          number: bundle.meta.number,
+          headSha: bundle.meta.headSha,
+          messages: history,
+          focus: focusPath ? { path: focusPath } : undefined,
+          mode: usePrefs.getState().modelPreference,
+        }),
+      });
+      if (!res.ok || !res.body) {
+        const msg = await res
+          .json()
+          .then((d) => d.error as string | undefined)
+          .catch(() => undefined);
+        throw new Error(msg || `Chat request failed (${res.status}).`);
+      }
+
+      if (!current()) { await res.body.cancel(); return; }
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+      let completed = false;
+      const processLine = (line: string) => {
+        if (!line.trim()) return;
+        if (completed) throw new Error('Chat returned data after its final answer.');
+        const evt = JSON.parse(line) as AiChatEvent;
+        if (evt.type === 'chunk' && typeof evt.delta === 'string') appendDelta(evt.delta);
+        else if (evt.type === 'usage') get().recordUsage(evt.usage);
+        else if (evt.type === 'error') throw new Error(evt.message);
+        else if (evt.type === 'done' && typeof evt.text === 'string') {
+          set((state) => ({ chat: { ...state.chat, messages: state.chat.messages.map((message, i) =>
+            i === state.chat.messages.length - 1 && message.role === 'assistant' ? { ...message, content: evt.text } : message) } }));
+          completed = true;
+        }
+        else throw new Error('Chat returned an invalid stream event.');
+      };
+      try {
+        for (;;) {
+          const { value, done } = await reader.read();
+          if (!current()) { await reader.cancel(); return; }
+          if (done) { buf += decoder.decode(); break; }
+          buf += decoder.decode(value, { stream: true });
+          const lines = buf.split('\n');
+          buf = lines.pop() ?? '';
+          for (const line of lines) processLine(line);
+        }
+        processLine(buf);
+        if (!completed) throw new Error('Chat ended before a complete answer was received.');
+        set((s) => ({ chat: { ...s.chat, status: 'idle' } }));
+      } finally {
+        await reader.cancel().catch(() => undefined);
+        reader.releaseLock();
+      }
+    } catch (err) {
+      if (!current() || (err as Error).name === 'AbortError') return;
+      set((s) => {
+        // Drop the empty assistant placeholder if nothing streamed; keep the
+        // user's question visible so the error reads in context.
+        const msgs = s.chat.messages.slice();
+        const last = msgs[msgs.length - 1];
+        if (last && last.role === 'assistant' && !last.content) msgs.pop();
+        return { chat: { messages: msgs, status: 'error', error: (err as Error).message } };
+      });
+    } finally {
+      if (chatAbort === controller) chatAbort = null;
+    }
+  },
+
+  resetChat() {
+    chatAbort?.abort();
+    chatAbort = null;
+    set({ chat: emptyChat });
+  },
+
+  toggleChatFocus() {
+    set((s) => ({ chatUseFocus: !s.chatUseFocus }));
+  },
+
+  startDiagram() {
+    const bundle = get().bundle;
+    if (bundle) openDiagramStream(bundle, set);
   },
 
   activeTab: 'explain',
@@ -778,18 +1056,27 @@ export const useStore = create<State>((set, get) => ({
 
   selectTab(tab) {
     set({ activeTab: tab });
-    if (tab === 'brief' || tab === 'activity') return;
-    const existing = get().personaResults[tab];
-    if (existing && (existing.status === 'streaming' || existing.status === 'done')) return;
+    // 'activity' reads existing data; 'ask' starts a stream only when the user
+    // actually asks a question , neither needs a lazy kickoff here.
+    if (tab === 'activity' || tab === 'ask' || !isAIEnabled()) return;
     const bundle = get().bundle;
     if (!bundle) return;
+    if (tab === 'ai-review') {
+      // Lazy: kick off the review the first time the tab is opened (or after an
+      // error). If it's already streaming or done, leave the result in place.
+      const cur = get().aiReview;
+      if (cur.status === 'idle' || cur.status === 'error') openAIReviewStream(bundle, set);
+      return;
+    }
+    const existing = get().personaResults[tab];
+    if (existing && (existing.status === 'streaming' || existing.status === 'done')) return;
     openPersonaStream(bundle, tab, set, get);
   },
 
   retryPersona(id) {
     const bundle = get().bundle;
     if (!bundle) return;
-    openPersonaStream(bundle, id, set, get);
+    openPersonaStream(bundle, id, set, get, true);
   },
 
   toggleReviewed(path) {
@@ -798,7 +1085,7 @@ export const useStore = create<State>((set, get) => ({
     const next = { ...reviewed, [path]: !reviewed[path] };
     if (!next[path]) delete next[path];
     set({ reviewed: next });
-    writeJSON(reviewedStorageKey(bundle.meta.headSha), next);
+    writeJSON(reviewedStorageKey(draftIdentity(bundle)), next);
   },
 
   setComment(path, body) {
@@ -807,8 +1094,8 @@ export const useStore = create<State>((set, get) => ({
     const next = { ...comments };
     if (body.trim()) next[path] = body;
     else delete next[path];
-    set({ comments: next });
-    writeJSON(commentsStorageKey(bundle.meta.headSha), next);
+    set({ comments: next, postingReview: afterDraftEdit(get().postingReview) });
+    writeJSON(commentsStorageKey(draftIdentity(bundle)), next);
   },
 
   setLineComment(path, line, body, startLine) {
@@ -826,20 +1113,22 @@ export const useStore = create<State>((set, get) => ({
     }
     if (Object.keys(forFile).length === 0) delete lineComments[path];
     else lineComments[path] = forFile;
-    set({ lineComments });
-    writeJSON(lineCommentsStorageKey(bundle.meta.headSha), lineComments);
+    set({ lineComments, postingReview: afterDraftEdit(get().postingReview) });
+    writeJSON(lineCommentsStorageKey(draftIdentity(bundle)), lineComments);
   },
 
   removeLineComment(path, line) {
     get().setLineComment(path, line, '');
   },
 
-  openComposer(path, startLine, endLine) {
+  openComposer(path, startLine, endLine, prefill) {
+    if (get().scope.kind !== 'all' || get().scopeLoading) return;
     set({
       composerTarget: {
         path,
         line: endLine,
         startLine,
+        ...(prefill ? { prefill } : {}),
       },
     });
   },
@@ -848,13 +1137,58 @@ export const useStore = create<State>((set, get) => ({
     set({ composerTarget: null });
   },
 
+  jumpToSuggestion(c) {
+    const { bundle, scope, scopeLoading } = get();
+    if (!bundle || scope.kind !== 'all' || scopeLoading || resolveAIReviewComment(bundle, c).anchorWarning) return;
+    // Switch to the file first (kicks off its content/blame fetch), then hand
+    // the reveal + composer-open off to DiffViewer via `pendingReveal`. Doing
+    // the open there , after the editor for the target file has mounted ,
+    // avoids racing DiffViewer's own "close composer when the file changes"
+    // effect, which would otherwise clobber a composer opened here.
+    const targetFile = bundle.files.find((file) => file.path === c.file);
+    if (targetFile?.hunks.some((hunk) => hunk.noise && c.line >= hunk.newStart && c.line < hunk.newStart + hunk.newLines)) {
+      set({ showNoise: true });
+    }
+    get().selectFile(c.file);
+    const startLine = c.startLine && c.startLine <= c.line ? c.startLine : c.line;
+    set((s) => ({
+      pendingReveal: {
+        path: c.file,
+        line: c.line,
+        startLine,
+        prefill: c.body,
+        nonce: (s.pendingReveal?.nonce ?? 0) + 1,
+      },
+    }));
+  },
+
+  clearPendingReveal() {
+    set({ pendingReveal: null });
+  },
+
   setReviewSummary(text) {
-    set({ reviewSummary: text });
+    const bundle = get().bundle;
+    if (!bundle) return;
+    set({ reviewSummary: text, postingReview: afterDraftEdit(get().postingReview) });
+    writeJSON(summaryStorageKey(bundle), text);
+  },
+
+  acknowledgeUncertainReview() {
+    const bundle = get().bundle;
+    if (!bundle || get().postingReview.status !== 'uncertain') return;
+    writeJSON(submissionStorageKey(bundle), { status: 'idle' });
+    set({ postingReview: { status: 'idle' } });
+    get().fetchReviewComments();
   },
 
   async postReview(event) {
     const { bundle, comments, lineComments, reviewSummary } = get();
-    if (!bundle) return;
+    if (!bundle || get().postingReview.status === 'posting' || get().postingReview.status === 'uncertain') return;
+    if (get().scope.kind !== 'all' || get().scopeLoading) {
+      set({ postingReview: { status: 'error', message: 'Return to All commits to submit a review of the current PR.' } });
+      return;
+    }
+    const current = requestGuard('postReview');
 
     // Build inline comments list from lineComments map.
     const inline: {
@@ -885,9 +1219,12 @@ export const useStore = create<State>((set, get) => ({
       return;
     }
 
+    const uncertain: State['postingReview'] = { status: 'uncertain',
+      message: 'Submission could not be confirmed. Check this PR on GitHub before submitting again.', url: bundle.meta.url };
+    writeJSON(submissionStorageKey(bundle), uncertain);
     set({ postingReview: { status: 'posting' } });
     try {
-      const res = await fetch('/api/review', {
+      const res = await sessionFetch('/api/review', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -902,21 +1239,57 @@ export const useStore = create<State>((set, get) => ({
       });
       const data = await res.json();
       if (!res.ok) {
-        set({
-          postingReview: { status: 'error', message: data.error ?? 'Failed to post.', url: undefined },
-        });
+        const status: State['postingReview'] = res.status >= 400 && res.status < 500
+          ? { status: 'error', message: data.error ?? 'Review rejected.' } : uncertain;
+        writeJSON(submissionStorageKey(bundle), status);
+        if (current()) set({ postingReview: status });
         return;
       }
+      if (typeof data.id !== 'number') throw new Error('Missing submission confirmation.');
+      // Read persisted values so navigation and edits during flight are preserved.
+      const id = draftIdentity(bundle);
+      const remainingComments = { ...(current() ? get().comments : readJSON<Record<string, string>>(commentsStorageKey(id), {})) };
+      for (const [path, body] of Object.entries(comments)) {
+        if (remainingComments[path] === body) delete remainingComments[path];
+      }
+      const remainingLines = structuredClone(current() ? get().lineComments : readJSON<State['lineComments']>(lineCommentsStorageKey(id), {}));
+      for (const [path, lines] of Object.entries(lineComments)) {
+        for (const [line, entry] of Object.entries(lines)) {
+          if (JSON.stringify(remainingLines[path]?.[Number(line)]) === JSON.stringify(entry)) delete remainingLines[path][Number(line)];
+        }
+        if (remainingLines[path] && !Object.keys(remainingLines[path]).length) delete remainingLines[path];
+      }
+      const savedSummary = current() ? get().reviewSummary : readJSON<string>(summaryStorageKey(bundle), '');
+      const remainingSummary = savedSummary === reviewSummary ? '' : savedSummary;
+      writeJSON(commentsStorageKey(id), remainingComments);
+      writeJSON(lineCommentsStorageKey(id), remainingLines);
+      writeJSON(summaryStorageKey(bundle), remainingSummary);
+      writeJSON(submissionStorageKey(bundle), { status: 'idle' });
       writeJSON(
         lastReviewedShaKey(bundle.meta.owner, bundle.meta.repo, bundle.meta.number),
         bundle.meta.headSha,
       );
+      if (!current()) {
+        // A user may have revisited this exact draft while the old response
+        // was queued. Reflect the confirmed clearing without touching a
+        // different PR or a newer submission's status.
+        const active = get().bundle;
+        if (active && draftIdentity(active) === id) {
+          set({ comments: remainingComments, lineComments: remainingLines, reviewSummary: remainingSummary,
+            ...(get().postingReview.status === 'uncertain' ? { postingReview: { status: 'idle' as const } } : {}) });
+        }
+        return;
+      }
+      const hasEdits = Object.keys(remainingComments).length || Object.keys(remainingLines).length || remainingSummary;
       set({
-        postingReview: { status: 'done', message: 'Posted.', url: data.url },
+        comments: remainingComments, lineComments: remainingLines, reviewSummary: remainingSummary,
+        postingReview: hasEdits ? { status: 'idle', message: 'Review posted. New edits remain pending.' } : { status: 'done', message: 'Posted.', url: data.url },
         lastReviewedSha: bundle.meta.headSha,
       });
+      get().fetchReviewComments();
     } catch (err) {
-      set({ postingReview: { status: 'error', message: (err as Error).message } });
+      if (!current()) return;
+      set({ postingReview: uncertain });
     }
   },
 }));
@@ -926,7 +1299,9 @@ function openPersonaStream(
   id: PersonaId,
   set: StoreSetter,
   get: () => State,
+  retry = false,
 ) {
+  if (!isAIEnabled()) return;
   const existing = personaEventSources.get(id);
   if (existing) {
     existing.close();
@@ -938,8 +1313,8 @@ function openPersonaStream(
     `&number=${bundle.meta.number}` +
     `&headSha=${bundle.meta.headSha}` +
     `&persona=${encodeURIComponent(id)}` +
-    modeParam();
-  const es = new EventSource(url);
+    modeParam() + (retry ? '&retry=1' : '');
+  const es = sessionStream(url);
   personaEventSources.set(id, es);
   set({ personaResults: { ...get().personaResults, [id]: { text: '', status: 'streaming' } } });
   attachUsageListener(es, set);
@@ -953,8 +1328,11 @@ function openPersonaStream(
     acc += decode(e.data);
     set({ personaResults: { ...get().personaResults, [id]: { text: acc, status: 'streaming' } } });
   });
-  es.addEventListener('done', () => {
-    set({ personaResults: { ...get().personaResults, [id]: { text: acc, status: 'done' } } });
+  es.addEventListener('done', (event: MessageEvent) => {
+    const text = finalStreamText(event);
+    set({ personaResults: { ...get().personaResults, [id]: text === undefined
+      ? { text: acc, status: 'error', error: 'The stream ended without a complete final result.' }
+      : { text, status: 'done' } } });
     es.close();
     personaEventSources.delete(id);
   });

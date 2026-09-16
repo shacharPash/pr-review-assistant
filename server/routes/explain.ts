@@ -1,12 +1,14 @@
+import { cacheGeneration, isCurrentGeneration } from '../services/cacheLifecycle.js';
 import { Router, type Request, type Response } from 'express';
 import { ClaudeRunner, pickModel } from '../services/claudeRunner.js';
-import { getBundle, getExplanation, setExplanation } from '../services/cache.js';
+import { getBundle, getGenerated, setGenerated, generatedIdentity } from '../services/cache.js';
 import { buildChecklistAcPrompt, findPersona } from '../../shared/personas.js';
 import { checklistSource } from '../../shared/jira.js';
 
 export const explainRouter = Router();
 
 explainRouter.get('/api/explain/stream', (req: Request, res: Response) => {
+  const generation = cacheGeneration();
   const owner = String(req.query.owner ?? '');
   const repo = String(req.query.repo ?? '');
   const number = Number(req.query.number);
@@ -39,7 +41,7 @@ explainRouter.get('/api/explain/stream', (req: Request, res: Response) => {
   res.on('error', () => { closed = true; });
   res.on('close', () => { closed = true; });
   const send = (event: string, data: unknown): void => {
-    if (closed) return;
+    if (closed || !isCurrentGeneration(generation)) return;
     try {
       res.write(`event: ${event}\n`);
       res.write(`data: ${JSON.stringify(data)}\n\n`);
@@ -48,10 +50,11 @@ explainRouter.get('/api/explain/stream', (req: Request, res: Response) => {
     }
   };
 
-  const cached = getExplanation(owner, repo, number, headSha, personaId);
+  const variant = generatedIdentity(bundle, `explain:${personaId}`, pickModel(req.query.mode, 'light'));
+  const cached = req.query.retry === '1' ? undefined : getGenerated(owner, repo, number, headSha, variant);
   if (cached) {
     send('chunk', cached);
-    send('done', '');
+    send('done', { text: cached });
     res.end();
     return;
   }
@@ -60,8 +63,8 @@ explainRouter.get('/api/explain/stream', (req: Request, res: Response) => {
     onChunk: (delta) => send('chunk', delta),
     onUsage: (usage) => send('usage', usage),
     onDone: (full) => {
-      setExplanation(owner, repo, number, headSha, personaId, full);
-      send('done', '');
+      if (isCurrentGeneration(generation)) setGenerated(owner, repo, number, headSha, variant, full);
+      send('done', { text: full });
       res.end();
     },
     onError: (msg) => {
@@ -70,7 +73,7 @@ explainRouter.get('/api/explain/stream', (req: Request, res: Response) => {
     },
   });
 
-  req.on('close', () => runner.abort());
+  res.on('close', () => runner.abort());
 
   // The Checklist persona becomes Jira-aware: when the PR links a fully-fetched
   // ticket, ground the checklist in that ticket's acceptance criteria instead

@@ -1,3 +1,4 @@
+import { SafeMarkdown, safeHref } from '../lib/SafeMarkdown.js';
 import { useState } from 'react';
 import { useStore } from '../state/store.js';
 import { usePrefs } from '../state/preferences.js';
@@ -169,7 +170,7 @@ function PRLevelCommentCard({
         <span className="rc-when">{when}</span>
         <a
           className="rc-open"
-          href={comment.htmlUrl}
+          href={safeHref(comment.htmlUrl)}
           target="_blank"
           rel="noreferrer"
           title="Open in GitHub"
@@ -178,10 +179,7 @@ function PRLevelCommentCard({
         </a>
       </div>
       {!collapsed && (
-        <div
-          className="rc-body"
-          dangerouslySetInnerHTML={{ __html: renderMarkdownish(comment.body) }}
-        />
+        <div className="rc-body"><SafeMarkdown text={comment.body} /></div>
       )}
     </div>
   );
@@ -191,30 +189,6 @@ function formatState(s: 'APPROVED' | 'CHANGES_REQUESTED' | 'COMMENTED'): string 
   if (s === 'APPROVED') return '✓ approved';
   if (s === 'CHANGES_REQUESTED') return '⚠ changes requested';
   return 'commented';
-}
-
-function renderMarkdownish(raw: string): string {
-  let text = raw.replace(/<!--[\s\S]*?-->/g, '');
-  text = text.replace(/<\/?details>/gi, '').replace(/<\/?summary>[^<]*<\/?summary>/gi, '');
-  text = text.replace(/<div>[\s\S]*?Fix in Web[\s\S]*?<\/div>/gi, '');
-  text = text.replace(/<picture>[\s\S]*?<\/picture>/gi, '');
-  text = text.replace(/<img\b[^>]*>/gi, '');
-  const escaped = escapeHTML(text);
-  return `<p class="rc-p">${escaped
-    .replace(/```([a-zA-Z0-9_-]*)\n([\s\S]*?)\n```/g,
-      (_, lang, code) => `<pre class="rc-pre"><code data-lang="${lang}">${code}</code></pre>`)
-    .replace(/`([^`\n]+)`/g, '<code>$1</code>')
-    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-    .replace(/(^|[^_])_([^_\n]+)_(?!\w)/g, '$1<em>$2</em>')
-    .replace(/^###\s+(.+)$/gm, '<h4 class="rc-h">$1</h4>')
-    .replace(/^##\s+(.+)$/gm, '<h3 class="rc-h">$1</h3>')
-    .replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g, '$1<a href="$2" target="_blank" rel="noreferrer">$2</a>')
-    .replace(/\n{2,}/g, '</p><p class="rc-p">')
-    .replace(/\n/g, '<br />')}</p>`;
-}
-
-function escapeHTML(text: string): string {
-  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 function formatRelative(iso: string): string {

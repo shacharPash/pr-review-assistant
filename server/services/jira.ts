@@ -45,8 +45,6 @@ interface JiraIssueResponse {
     status?: { name?: string };
     issuetype?: { name?: string };
     description?: unknown;
-    assignee?: { displayName?: string } | null;
-    reporter?: { displayName?: string } | null;
   };
 }
 
@@ -70,8 +68,10 @@ function adfToPlainText(node: unknown): string {
 
 export async function fetchTicket(key: string): Promise<JiraTicket | null> {
   if (!isJiraConfigured()) return null;
-  const url = `${base()}/rest/api/3/issue/${encodeURIComponent(key)}?fields=summary,status,issuetype,description,assignee,reporter`;
+  const url = `${base()}/rest/api/3/issue/${encodeURIComponent(key)}?fields=summary,status,issuetype,description`;
   const res = await fetch(url, {
+    signal: AbortSignal.timeout(5000),
+    redirect: 'error',
     headers: {
       Authorization: authHeader(),
       Accept: 'application/json',
@@ -89,8 +89,6 @@ export async function fetchTicket(key: string): Promise<JiraTicket | null> {
     type: data.fields.issuetype?.name ?? 'Task',
     description: adfToPlainText(data.fields.description).trim(),
     url: `${base()}/browse/${data.key}`,
-    assignee: data.fields.assignee?.displayName,
-    reporter: data.fields.reporter?.displayName,
   };
 }
 
@@ -102,7 +100,7 @@ export async function fetchTickets(keys: string[]): Promise<{
   const tickets: JiraTicket[] = [];
   const failures: { key: string; reason: string }[] = [];
   await Promise.all(
-    keys.map(async (key) => {
+    keys.slice(0, 5).map(async (key) => {
       try {
         const t = await fetchTicket(key);
         if (t) tickets.push(t);
@@ -112,6 +110,7 @@ export async function fetchTickets(keys: string[]): Promise<{
       }
     }),
   );
+  for (const key of keys.slice(5)) failures.push({ key, reason: 'Only the first five linked tickets are fetched.' });
   return { tickets, failures };
 }
 

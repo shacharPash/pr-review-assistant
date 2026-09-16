@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useStore } from './state/store.js';
+import { useStore, selectDisplayFiles } from './state/store.js';
 import { usePrefs } from './state/preferences.js';
 import { PRInput } from './components/PRInput.js';
 import { PRView } from './components/PRView.js';
@@ -12,7 +12,7 @@ import { HealthBanner } from './components/HealthBanner.js';
 
 export function App() {
   const bundle = useStore((s) => s.bundle);
-  const files = useStore((s) => s.bundle?.files ?? []);
+  const files = useStore(selectDisplayFiles);
   const activePath = useStore((s) => s.activeFilePath);
   const showNoise = useStore((s) => s.showNoise);
   const selectFile = useStore((s) => s.selectFile);
@@ -35,7 +35,7 @@ export function App() {
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       const tag = (e.target as HTMLElement | null)?.tagName?.toLowerCase();
-      if (tag === 'input' || tag === 'textarea') return;
+      if (tag === 'input' || tag === 'textarea' || tag === 'select' || tag === 'button' || (e.target as HTMLElement)?.isContentEditable) return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
 
       const visible = files.filter((f) => showNoise || !f.noise);

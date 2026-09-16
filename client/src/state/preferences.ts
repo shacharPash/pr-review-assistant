@@ -3,19 +3,15 @@ import { create } from 'zustand';
 export type Theme = 'github' | 'intellij' | 'vscode';
 export type ViewMode = 'split' | 'unified';
 /**
- * Reviewer's quality/speed tier for AI features. The server maps this to
- * a per-route model so we don't waste Opus on one-word outputs.
+ * The Claude model used for every AI feature. The reviewer picks the
+ * quality/speed/cost trade-off explicitly, once, and it applies globally
+ * (TL;DR, AI Review, Ask, personas, etc.).
  *
- * - `fast`  — Sonnet everywhere. Cheap, snappy, fine for routine PRs.
- * - `smart` — Opus on the routes where reasoning matters (TL;DR + diagram);
- *             Sonnet on short outputs (headline / before-after / complexity /
- *             persona tabs) because Opus adds no quality there.
- *
- * This deliberately replaces the older 'auto' option, whose meaning silently
- * depended on each user's `claude` CLI config and produced inconsistent token
- * bills across teammates.
+ * - `opus`   , strongest reasoning; slowest and priciest.
+ * - `sonnet` , balanced default; good quality, much snappier than Opus.
+ * - `haiku`  , fastest and cheapest; great for quick questions / routine PRs.
  */
-export type ModelPreference = 'fast' | 'smart';
+export type ModelPreference = 'opus' | 'sonnet' | 'haiku';
 
 interface Preferences {
   theme: Theme;
@@ -95,15 +91,17 @@ export const usePrefs = create<Preferences>((set, get) => ({
     ? window.localStorage.getItem(HIDE_REVIEWER_KEY) === '1'
     : false,
   modelPreference: (() => {
-    if (typeof window === 'undefined') return 'smart' as ModelPreference;
+    if (typeof window === 'undefined') return 'sonnet' as ModelPreference;
     const raw = window.localStorage.getItem(MODEL_PREF_KEY);
-    // Migrate the prior 3-pill values:
-    //   auto / opus  → smart  (closest to what they were getting)
-    //   sonnet       → fast
-    // Anything else (or nothing) defaults to 'smart' so new users see the
-    // tool's strongest reasoning on TL;DR + diagram out of the box.
-    if (raw === 'fast' || raw === 'sonnet') return 'fast';
-    return 'smart';
+    if (raw === 'opus' || raw === 'sonnet' || raw === 'haiku') return raw;
+    // Migrate the prior Fast/Smart tiers to an explicit model:
+    //   smart → opus (it used Opus on the heavy routes)
+    //   fast  → sonnet
+    if (raw === 'smart') return 'opus';
+    if (raw === 'fast') return 'sonnet';
+    // New users: Sonnet , the balanced default (good quality, far snappier
+    // than Opus, avoids surprise-slow first runs).
+    return 'sonnet';
   })(),
   blameWidth: (() => {
     if (typeof window === 'undefined') return BLAME_WIDTH_DEFAULT;

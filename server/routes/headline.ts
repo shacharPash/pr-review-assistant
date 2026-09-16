@@ -1,6 +1,7 @@
+import { cacheGeneration, isCurrentGeneration } from '../services/cacheLifecycle.js';
 import { Router, type Request, type Response } from 'express';
 import { ClaudeRunner, pickModel } from '../services/claudeRunner.js';
-import { getBundle, getHeadline, setHeadline } from '../services/cache.js';
+import { getBundle, getGenerated, setGenerated, generatedIdentity } from '../services/cache.js';
 
 export const headlineRouter = Router();
 
@@ -11,6 +12,7 @@ names, NO file paths, NO bullet, NO preamble. Just the sentence. If the PR
 genuinely is just a dependency bump or trivial cleanup, say so plainly.`;
 
 headlineRouter.get('/api/headline/stream', (req: Request, res: Response) => {
+  const generation = cacheGeneration();
   const owner = String(req.query.owner ?? '');
   const repo = String(req.query.repo ?? '');
   const number = Number(req.query.number);
@@ -37,7 +39,7 @@ headlineRouter.get('/api/headline/stream', (req: Request, res: Response) => {
   res.on('error', () => { closed = true; });
   res.on('close', () => { closed = true; });
   const send = (event: string, data: unknown): void => {
-    if (closed) return;
+    if (closed || !isCurrentGeneration(generation)) return;
     try {
       res.write(`event: ${event}\n`);
       res.write(`data: ${JSON.stringify(data)}\n\n`);
@@ -46,10 +48,11 @@ headlineRouter.get('/api/headline/stream', (req: Request, res: Response) => {
     }
   };
 
-  const cached = getHeadline(owner, repo, number, headSha);
+  const variant = generatedIdentity(bundle, 'headline', pickModel(req.query.mode, 'light'));
+  const cached = req.query.retry === '1' ? undefined : getGenerated(owner, repo, number, headSha, variant);
   if (cached) {
     send('chunk', cached);
-    send('done', '');
+    send('done', { text: cached });
     res.end();
     return;
   }
@@ -58,8 +61,8 @@ headlineRouter.get('/api/headline/stream', (req: Request, res: Response) => {
     onChunk: (delta) => send('chunk', delta),
     onUsage: (usage) => send('usage', usage),
     onDone: (full) => {
-      setHeadline(owner, repo, number, headSha, full.trim());
-      send('done', '');
+      if (isCurrentGeneration(generation)) setGenerated(owner, repo, number, headSha, variant, full.trim());
+      send('done', { text: full });
       res.end();
     },
     onError: (msg) => {
@@ -68,7 +71,7 @@ headlineRouter.get('/api/headline/stream', (req: Request, res: Response) => {
     },
   });
 
-  req.on('close', () => runner.abort());
+  res.on('close', () => runner.abort());
   // Headline is a light route — one short sentence. Opus adds no quality;
   // Sonnet wins on speed and cost regardless of mode.
   runner.start(bundle, { systemPrompt: HEADLINE_PROMPT, model: pickModel(req.query.mode, 'light') });

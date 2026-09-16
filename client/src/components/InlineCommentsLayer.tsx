@@ -1,3 +1,5 @@
+import { isAIEnabled } from '../state/privacy.js';
+import { requestGuard, sessionFetch } from '../state/session.js';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { editor as MonacoEditor, IDisposable } from 'monaco-editor';
@@ -21,6 +23,7 @@ interface ZoneEntry {
   line: number;
   node: HTMLDivElement;
   kind: 'thread' | 'composer';
+  afterLineNumber: number;
 }
 
 /**
@@ -51,6 +54,7 @@ export function InlineCommentsLayer({ editor, filePath, newLineMap }: Props) {
   const removeLineComment = useStore((s) => s.removeLineComment);
 
   const [zones, setZones] = useState<ZoneEntry[]>([]);
+  const zonesRef = useRef(new Map<number, ZoneEntry>());
   const addBtnRef = useRef<HTMLButtonElement | null>(null);
   const currentHoverLine = useRef<number>(0);
 
@@ -218,57 +222,55 @@ export function InlineCommentsLayer({ editor, filePath, newLineMap }: Props) {
     };
   }, [editor, filePath, openComposer]);
 
-  // ---- View zones for threads + composer ----
+  // Dispose zones only when their editor/file lifetime ends. An update to
+  // saved comments must not dispose a different, still-open composer.
+  useEffect(() => () => {
+    if (editor) editor.changeViewZones((accessor) => {
+      for (const zone of zonesRef.current.values()) accessor.removeZone(zone.id);
+    });
+    zonesRef.current.clear();
+  }, [editor, filePath]);
+
+  // Reconcile by real file line and reuse portal containers. In particular,
+  // clearing a submitted thread leaves its active composer mounted, with
+  // unsaved typing, adjusted range, focus and selection intact.
   useEffect(() => {
     if (!editor) return;
-
-    const threadLines = Object.keys(lineComments).map(Number).filter((n) => n > 0);
-    const composerLine =
-      composerTarget?.path === filePath ? composerTarget.line : null;
-
-    // Compose a target set: threads + composer (composer might be on a line
-    // that already has a thread → we render the editor below the thread).
-    type Wanted = { line: number; kind: 'thread' | 'composer' };
-    const wanted: Wanted[] = [
+    const composerLine = composerTarget?.path === filePath ? composerTarget.line : null;
+    const threadLines = Object.keys(lineComments).map(Number).filter((line) => line > 0 && line !== composerLine);
+    const wanted: Array<{ line: number; kind: 'thread' | 'composer' }> = [
       ...threadLines.map((line) => ({ line, kind: 'thread' as const })),
-      ...(composerLine !== null && !lineComments[composerLine]
-        ? [{ line: composerLine, kind: 'composer' as const }]
-        : []),
+      ...(composerLine === null ? [] : [{ line: composerLine, kind: 'composer' as const }]),
     ];
-
-    const newZones: ZoneEntry[] = [];
-    // Native handlers that block Monaco from receiving events while letting
-    // them flow through React naturally inside the zone.
-    const stop = (e: Event) => { e.stopPropagation(); };
-
+    const wantedLines = new Set(wanted.map((zone) => zone.line));
+    const stop = (event: Event) => { event.stopPropagation(); };
     editor.changeViewZones((accessor) => {
-      for (const w of wanted) {
-        const node = document.createElement('div');
-        node.className = 'pra-view-zone';
-        node.addEventListener('mousedown', stop);
-        node.addEventListener('mouseup', stop);
-        node.addEventListener('click', stop);
-        node.addEventListener('wheel', stop);
-        node.addEventListener('keydown', stop);
-        // w.line is a REAL file line (storage coord). Convert to Monaco line
-        // for placement so the zone appears at the visible row, regardless
-        // of whether noise is hidden.
-        const id = accessor.addZone({
-          afterLineNumber: realToMonaco(w.line),
-          heightInPx: w.kind === 'composer' ? 260 : 150,
-          domNode: node,
-        });
-        newZones.push({ id, line: w.line, node, kind: w.kind });
+      for (const [line, zone] of zonesRef.current) {
+        if (!wantedLines.has(line)) {
+          accessor.removeZone(zone.id);
+          zonesRef.current.delete(line);
+        }
+      }
+      for (const target of wanted) {
+        const previous = zonesRef.current.get(target.line);
+        const afterLineNumber = realToMonaco(target.line);
+        if (previous?.kind === target.kind && previous.afterLineNumber === afterLineNumber) continue;
+        const node = previous?.node ?? document.createElement('div');
+        if (previous) accessor.removeZone(previous.id);
+        else {
+          node.className = 'pra-view-zone';
+          for (const type of ['mousedown', 'mouseup', 'click', 'wheel', 'keydown']) {
+            node.addEventListener(type, stop);
+          }
+        }
+        const id = accessor.addZone({ afterLineNumber,
+          heightInPx: target.kind === 'composer' ? 260 : 150, domNode: node });
+        zonesRef.current.set(target.line, { id, line: target.line, node, kind: target.kind, afterLineNumber });
       }
     });
-    setZones(newZones);
-
-    return () => {
-      editor.changeViewZones((accessor) => {
-        for (const z of newZones) accessor.removeZone(z.id);
-      });
-    };
-  }, [editor, JSON.stringify(Object.keys(lineComments)), composerTarget?.line, composerTarget?.path, filePath]);
+    setZones(wanted.map(({ line }) => zonesRef.current.get(line)!));
+  }, [editor, JSON.stringify(Object.keys(lineComments)), composerTarget?.line, composerTarget?.path,
+    filePath, JSON.stringify(newLineMap)]);
 
   // Accepts REAL file lines and reads the corresponding rows from Monaco's
   // model, translating real → Monaco internally so suggestion/AI helpers
@@ -318,24 +320,31 @@ export function InlineCommentsLayer({ editor, filePath, newLineMap }: Props) {
               />
             </div>,
             z.node,
+            String(z.line),
           );
         }
-        const startLine = composerTarget?.startLine ?? z.line;
+        const savedDraft = lineComments[z.line];
+        const startLine = savedDraft ? savedDraft.startLine ?? z.line : composerTarget?.startLine ?? z.line;
         return createPortal(
           <div>
-            <Composer
+            <ComposerCore
+              initialBody={savedDraft?.body ?? composerTarget?.prefill ?? ''}
+              isEdit={!!lineComments[z.line]}
+              onDelete={lineComments[z.line] ? () => { removeLineComment(filePath, z.line); closeComposer(); } : undefined}
               startLine={startLine}
               endLine={z.line}
               filePath={filePath}
               readOriginalLines={readOriginalLines}
               onCancel={closeComposer}
               onSave={(text, s, e) => {
+                if (e !== z.line && lineComments[z.line]) removeLineComment(filePath, z.line);
                 setLineComment(filePath, e, text, s);
                 closeComposer();
               }}
             />
           </div>,
           z.node,
+          String(z.line),
         );
       })}
     </>
@@ -366,6 +375,11 @@ function ComposerCore({
   const [busy, setBusy] = useState<null | 'suggest' | 'enhance'>(null);
   const [start, setStart] = useState(startLine);
   const [end, setEnd] = useState(endLine);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const aiRequest = useRef<AbortController | null>(null);
+  const latest = useRef({ draft, start, end });
+  latest.current = { draft, start, end };
+  useEffect(() => () => aiRequest.current?.abort(), []);
 
   const insertSuggestion = () => {
     const original = readOriginalLines(start, end);
@@ -374,26 +388,40 @@ function ComposerCore({
   };
 
   const callAI = async (mode: 'suggest' | 'enhance') => {
+    if (!isAIEnabled()) { setAiError('AI is off. Enable it in Local data & AI first.'); return; }
+    aiRequest.current?.abort();
+    const controller = new AbortController();
+    aiRequest.current = controller;
+    const inSession = requestGuard(`inlineAI:${filePath}`, true);
+    const current = () => !controller.signal.aborted && inSession();
     setBusy(mode);
+    setAiError(null);
     try {
       const original = readOriginalLines(start, end);
-      const res = await fetch('/api/ai-comment', {
+      const res = await sessionFetch('/api/ai-comment?aiConsent=1', {
+        signal: controller.signal,
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           mode, filePath, startLine: start, endLine: end, originalCode: original, draft,
         }),
       });
+      if (!current()) return;
       if (!res.ok) {
         const err = (await res.json().catch(() => ({}))) as { error?: string };
-        setDraft((d) => d + `\n\n_AI ${mode} failed: ${err.error ?? 'unknown error'}_`);
+        if (current()) setAiError(err.error ?? 'AI request failed.');
         return;
       }
       const data = (await res.json()) as {
         text: string;
         usage?: { input: number; output: number; cacheRead: number; cacheCreation: number };
       };
+      if (!current()) return;
       if (data.usage) useStore.getState().recordUsage(data.usage);
+      if (latest.current.start !== start || latest.current.end !== end || (mode === 'enhance' && latest.current.draft !== draft)) {
+        setAiError('The draft or range changed. Run the AI action again for your current text.');
+        return;
+      }
       if (mode === 'suggest') {
         // The endpoint returns just the replacement code; wrap as suggestion.
         const block = '\n\n```suggestion\n' + data.text.trim() + '\n```\n';
@@ -402,9 +430,9 @@ function ComposerCore({
         setDraft(data.text.trim());
       }
     } catch (err) {
-      setDraft((d) => d + `\n\n_AI ${mode} failed: ${(err as Error).message}_`);
+      if (current()) setAiError((err as Error).message);
     } finally {
-      setBusy(null);
+      if (current()) setBusy(null);
     }
   };
 
@@ -438,6 +466,7 @@ function ComposerCore({
           autoFocus={!isEdit}
           rows={4}
         />
+        {aiError && <p role="alert">{aiError}</p>}
         <div className="vz-tools">
           <button
             type="button"
@@ -554,16 +583,18 @@ interface ComposerProps {
   startLine: number;
   endLine: number;
   filePath: string;
+  /** Seeds the draft , used when jumping in from an AI Review suggestion. */
+  initialBody?: string;
   readOriginalLines: (start: number, end: number) => string;
   onCancel: () => void;
   onSave: (text: string, startLine: number, endLine: number) => void;
 }
 
-function Composer(props: ComposerProps) {
+function Composer({ initialBody = '', ...props }: ComposerProps) {
   return (
     <ComposerCore
       {...props}
-      initialBody=""
+      initialBody={initialBody}
     />
   );
 }

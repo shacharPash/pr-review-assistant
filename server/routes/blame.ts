@@ -1,3 +1,7 @@
+import { BoundedCache } from '../services/boundedCache.js';
+import { cacheGeneration, isCurrentGeneration, registerCacheClear } from '../services/cacheLifecycle.js';
+import { findComparison } from '../services/comparisons.js';
+import { comparisonKey } from '../../shared/types.js';
 import { Router, type Request, type Response } from 'express';
 import { fetchBlame } from '../services/blame.js';
 import { getBundle } from '../services/cache.js';
@@ -5,10 +9,12 @@ import type { BlameRange } from '../../shared/types.js';
 
 export const blameRouter = Router();
 
-const memo = new Map<string, BlameRange[]>();
+const memo = new BoundedCache<BlameRange[]>(15 * 60_000, 100, 10 * 1024 * 1024);
 const inflight = new Map<string, Promise<BlameRange[]>>();
+registerCacheClear(() => inflight.clear());
 
 blameRouter.get('/api/blame', async (req: Request, res: Response) => {
+  const generation = cacheGeneration();
   const owner = String(req.query.owner ?? '');
   const repo = String(req.query.repo ?? '');
   const number = Number(req.query.number);
@@ -24,7 +30,11 @@ blameRouter.get('/api/blame', async (req: Request, res: Response) => {
     return res.status(404).json({ error: 'PR bundle not in cache.' });
   }
 
-  const cacheKey = `${owner}/${repo}:${headSha}:${path}`;
+  const selected = findComparison(bundle, String(req.query.comparison ?? ''));
+  if (!selected || !selected.files.some((f) => f.path === path && f.status !== 'removed')) {
+    return res.status(409).json({ error: 'File not in the selected comparison.' });
+  }
+  const cacheKey = `${comparisonKey(selected.comparison)}:${path}`;
   const cached = memo.get(cacheKey);
   if (cached) return res.json({ ranges: cached });
 
@@ -34,15 +44,16 @@ blameRouter.get('/api/blame', async (req: Request, res: Response) => {
       const ranges = await pending;
       return res.json({ ranges });
     } catch {
+      if (!isCurrentGeneration(generation)) return res.status(409).json({ error: 'Local data was cleared. Reload the PR.' });
       // fall through to a fresh fetch
     }
   }
 
-  const promise = fetchBlame(owner, repo, headSha, path);
-  inflight.set(cacheKey, promise);
+  const promise = fetchBlame(owner, repo, selected.comparison.headSha, path);
+  if (isCurrentGeneration(generation)) inflight.set(cacheKey, promise);
   try {
     const ranges = await promise;
-    memo.set(cacheKey, ranges);
+    if (isCurrentGeneration(generation)) memo.set(cacheKey, ranges);
     res.json({ ranges });
   } catch (err) {
     const e = err as Error & { stderr?: string };
@@ -51,6 +62,6 @@ blameRouter.get('/api/blame', async (req: Request, res: Response) => {
       detail: (e.stderr ?? e.message)?.split('\n').slice(-3).join('\n'),
     });
   } finally {
-    inflight.delete(cacheKey);
+    if (inflight.get(cacheKey) === promise) inflight.delete(cacheKey);
   }
 });
