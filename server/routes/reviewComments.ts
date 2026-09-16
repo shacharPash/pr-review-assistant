@@ -1,3 +1,4 @@
+import { cacheGeneration, isCurrentGeneration } from '../services/cacheLifecycle.js';
 import { Router, type Request, type Response } from 'express';
 import { fetchPRReviewComments } from '../services/reviewCommentsFetcher.js';
 import { getBundle, getReviewComments, setReviewComments } from '../services/cache.js';
@@ -12,6 +13,7 @@ export const reviewCommentsRouter = Router();
  * so refreshing is cheap.
  */
 reviewCommentsRouter.get('/api/pr/review-comments', async (req: Request, res: Response) => {
+  const generation = cacheGeneration();
   const owner = String(req.query.owner ?? '');
   const repo = String(req.query.repo ?? '');
   const number = Number(req.query.number);
@@ -25,11 +27,11 @@ reviewCommentsRouter.get('/api/pr/review-comments', async (req: Request, res: Re
   }
 
   const cached = getReviewComments(owner, repo, number, headSha);
-  if (cached) return res.json(cached);
+  if (cached && req.query.refresh !== '1') return res.json(cached);
 
   try {
     const comments = await fetchPRReviewComments(owner, repo, number);
-    setReviewComments(owner, repo, number, headSha, comments);
+    if (isCurrentGeneration(generation)) setReviewComments(owner, repo, number, headSha, comments);
     res.json(comments);
   } catch (err) {
     const e = err as NodeJS.ErrnoException & { stderr?: string };
@@ -40,13 +42,14 @@ reviewCommentsRouter.get('/api/pr/review-comments', async (req: Request, res: Re
   }
 });
 
-async function refetchAndCache(owner: string, repo: string, number: number, headSha: string) {
+async function refetchAndCache(owner: string, repo: string, number: number, headSha: string, generation: number) {
   const fresh = await fetchPRReviewComments(owner, repo, number);
-  setReviewComments(owner, repo, number, headSha, fresh);
+  if (isCurrentGeneration(generation)) setReviewComments(owner, repo, number, headSha, fresh);
   return fresh;
 }
 
 reviewCommentsRouter.post('/api/pr/review-comments/reply', async (req: Request, res: Response) => {
+  const generation = cacheGeneration();
   const { owner, repo, number, headSha, inReplyTo, body } = req.body ?? {};
   if (!owner || !repo || !number || !headSha || !inReplyTo || typeof body !== 'string' || !body.trim()) {
     return res.status(400).json({ ok: false, error: 'Missing required fields.' });
@@ -56,7 +59,7 @@ reviewCommentsRouter.post('/api/pr/review-comments/reply', async (req: Request, 
   }
   try {
     await postReply(owner, repo, Number(number), String(inReplyTo), String(body));
-    const fresh = await refetchAndCache(owner, repo, Number(number), headSha);
+    const fresh = await refetchAndCache(owner, repo, Number(number), headSha, generation);
     res.json({ ok: true, comments: fresh });
   } catch (err) {
     const e = err as NodeJS.ErrnoException & { stderr?: string };
@@ -65,6 +68,7 @@ reviewCommentsRouter.post('/api/pr/review-comments/reply', async (req: Request, 
 });
 
 reviewCommentsRouter.post('/api/pr/review-comments/resolve', async (req: Request, res: Response) => {
+  const generation = cacheGeneration();
   const { owner, repo, number, headSha, threadId, resolved } = req.body ?? {};
   if (!owner || !repo || !number || !headSha || !threadId || typeof resolved !== 'boolean') {
     return res.status(400).json({ ok: false, error: 'Missing required fields.' });
@@ -74,7 +78,7 @@ reviewCommentsRouter.post('/api/pr/review-comments/resolve', async (req: Request
   }
   try {
     await setResolved(String(threadId), resolved);
-    const fresh = await refetchAndCache(owner, repo, Number(number), headSha);
+    const fresh = await refetchAndCache(owner, repo, Number(number), headSha, generation);
     res.json({ ok: true, comments: fresh });
   } catch (err) {
     const e = err as NodeJS.ErrnoException & { stderr?: string };

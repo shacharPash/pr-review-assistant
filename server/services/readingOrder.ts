@@ -15,19 +15,31 @@ export function reorderForReading(files: DiffFile[]): DiffFile[] {
     .map((entry) => entry.file);
 }
 
+/**
+ * Heuristic: is this a test file (or test fixture/resource)? Shared so the
+ * AI Review can de-prioritize tests the same way the reading order does.
+ * Covers Java (`*Test.java`, `src/test/…`), JS/TS (`*.test.*`, `*.spec.*`,
+ * `__tests__`), and common `test/`, `tests/`, `spec/` directories.
+ */
+export function isTestFile(path: string): boolean {
+  const p = path.toLowerCase();
+  return (
+    p.includes('/test/') ||
+    p.includes('/tests/') ||
+    p.includes('__tests__') ||
+    p.includes('/spec/') ||
+    /\.(test|spec)\.[a-z]+$/.test(p) ||
+    /test\.java$/.test(p)
+  );
+}
+
 function scoreFile(file: DiffFile): number {
   if (file.noise) return 1000; // always last
 
   const path = file.path.toLowerCase();
-  const isTest =
-    path.includes('/test/') ||
-    path.includes('/tests/') ||
-    path.includes('__tests__') ||
-    /\.(test|spec)\.[a-z]+$/.test(path) ||
-    /test\.java$/.test(path);
 
   let score = 0;
-  if (isTest) score += 100; // tests after prod code
+  if (isTestFile(path)) score += 100; // tests after prod code
 
   // Interface-like signals: short paths, "interface" in path, .d.ts files
   if (path.includes('interface')) score -= 20;

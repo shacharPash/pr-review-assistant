@@ -48,7 +48,7 @@ function toAuthor(u: GHUser): ReviewAuthor {
 async function ghApiJSON<T>(path: string): Promise<T> {
   // gh api auto-paginates with --paginate; combined output is a JSON array per call.
   const { stdout } = await execFileAsync('gh', ['api', '--paginate', path], {
-    maxBuffer: 50 * 1024 * 1024,
+    timeout: 30_000, maxBuffer: 50 * 1024 * 1024,
     encoding: 'utf8',
   });
   // --paginate concatenates JSON arrays; join them.
@@ -77,7 +77,6 @@ export interface GHThreadComment {
   originalLine: number | null;
   startLine: number | null;
   originalStartLine: number | null;
-  diffSide: 'LEFT' | 'RIGHT' | null;
   createdAt: string;
   url: string;
 }
@@ -85,6 +84,10 @@ export interface GHThreadNode {
   id: string;
   isResolved: boolean;
   isOutdated: boolean;
+  // `diffSide` lives on the THREAD in GitHub's schema, not on the individual
+  // comment (PullRequestReviewComment has no diffSide field). All comments in
+  // a thread share the thread's side.
+  diffSide: 'LEFT' | 'RIGHT' | null;
   comments: { nodes: GHThreadComment[] };
 }
 export interface GHThreadsResponse {
@@ -107,6 +110,8 @@ export function mapReviewThreads(resp: GHThreadsResponse): ReviewThread[] {
     const raw = node.comments?.nodes ?? [];
     if (raw.length === 0) continue;
     const root = raw[0];
+    // Side is a thread-level property; every comment in the thread inherits it.
+    const side = node.diffSide ?? 'RIGHT';
     const comments: InlineReviewComment[] = raw.map((c) => ({
       id: String(c.databaseId),
       author: authorFromGraphQL(c.author),
@@ -114,7 +119,7 @@ export function mapReviewThreads(resp: GHThreadsResponse): ReviewThread[] {
       path: c.path,
       line: (c.line ?? c.originalLine) as number,
       startLine: (c.startLine ?? c.originalStartLine) ?? undefined,
-      side: c.diffSide ?? 'RIGHT',
+      side,
       createdAt: c.createdAt,
       htmlUrl: c.url,
     }));
@@ -125,7 +130,7 @@ export function mapReviewThreads(resp: GHThreadsResponse): ReviewThread[] {
       path: root.path,
       line: (root.line ?? root.originalLine) as number,
       startLine: (root.startLine ?? root.originalStartLine) ?? undefined,
-      side: root.diffSide ?? 'RIGHT',
+      side,
       replyToId: String(root.databaseId),
       comments,
     });
@@ -137,17 +142,17 @@ async function fetchReviewThreads(owner: string, repo: string, number: number): 
   const query = `query($owner:String!,$repo:String!,$number:Int!){
     repository(owner:$owner,name:$repo){ pullRequest(number:$number){
       reviewThreads(first:100){ nodes{
-        id isResolved isOutdated
+        id isResolved isOutdated diffSide
         comments(first:100){ nodes{
           databaseId author{ login url avatarUrl __typename }
-          body path line originalLine startLine originalStartLine diffSide createdAt url
+          body path line originalLine startLine originalStartLine createdAt url
         } }
       } }
     } } }`;
   const { stdout } = await execFileAsync(
     'gh',
     ['api', 'graphql', '-f', `query=${query}`, '-F', `owner=${owner}`, '-F', `repo=${repo}`, '-F', `number=${number}`],
-    { maxBuffer: 50 * 1024 * 1024, encoding: 'utf8' },
+    { timeout: 30_000, maxBuffer: 50 * 1024 * 1024, encoding: 'utf8' },
   );
   const resp = JSON.parse(stdout.trim() || '{}') as GHThreadsResponse;
   if (resp.errors?.length) {

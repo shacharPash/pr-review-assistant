@@ -62,7 +62,7 @@ export function PRView() {
           <TLDRPanel />
           <FileSidebar />
         </div>
-        <ReviewFooter />
+        <ReviewFooter key={`${bundle.meta.owner}/${bundle.meta.repo}#${bundle.meta.number}:${bundle.meta.headSha}`} />
       </aside>
       <RailResizer />
       <div className="diff-column">

@@ -33,12 +33,12 @@ export async function postReply(
   owner: string, repo: string, number: number, inReplyTo: string, body: string,
 ): Promise<void> {
   await execFileAsync('gh', replyArgs(owner, repo, number, inReplyTo, body), {
-    maxBuffer: 10 * 1024 * 1024, encoding: 'utf8',
+    timeout: 30_000, maxBuffer: 10 * 1024 * 1024, encoding: 'utf8',
   });
 }
 
 export async function setResolved(threadId: string, resolved: boolean): Promise<void> {
   await execFileAsync('gh', resolveArgs(threadId, resolved), {
-    maxBuffer: 10 * 1024 * 1024, encoding: 'utf8',
+    timeout: 30_000, maxBuffer: 10 * 1024 * 1024, encoding: 'utf8',
   });
 }

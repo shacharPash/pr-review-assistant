@@ -43,11 +43,10 @@ export function FileSidebar() {
   const reviewedCount = visible.filter((f) => reviewed[f.path]).length;
   const total = visible.length;
 
-  if (files.length === 0) return null;
 
   const orderExplain = 'Production code is shown before tests; interfaces and ' +
     'schemas before implementations; lockfiles and generated files at the bottom. ' +
-    'Read top to bottom — earlier files usually establish the contract that later ' +
+    'Read top to bottom : earlier files usually establish the contract that later ' +
     'files implement or verify.';
 
   return (
@@ -91,7 +90,6 @@ export function FileSidebar() {
           <div
             key={f.path}
             className={`file-card ${active === f.path ? 'active' : ''} ${isReviewed ? 'reviewed' : ''}`}
-            onClick={() => selectFile(f.path)}
             title={f.path}
           >
             <button
@@ -99,12 +97,12 @@ export function FileSidebar() {
               className={`review-check ${isReviewed ? 'checked' : ''}`}
               onClick={handleCheckClick}
               aria-label={isReviewed ? 'Mark not reviewed' : 'Mark reviewed'}
-              title={isReviewed ? 'Reviewed — click to unmark' : 'Mark as reviewed'}
+              title={isReviewed ? 'Reviewed : click to unmark' : 'Mark as reviewed'}
             >
               {isReviewed ? '✓' : i + 1}
             </button>
-            <div className="info">
-              <div className="name">
+            <button type="button" className="info" style={{ border: 0, background: 'transparent', color: 'inherit', textAlign: 'left' }} onClick={() => selectFile(f.path)} aria-current={active === f.path ? 'true' : undefined}>
+              <span className="name">
                 <span>{className}</span>
                 {badges.map((b) => (
                   <span key={b.label} className={`badge ${b.kind}`}>{b.label}</span>
@@ -127,9 +125,9 @@ export function FileSidebar() {
                     🤖 {reviewerCountByFile.get(f.path)}
                   </span>
                 ) : null}
-              </div>
-              <div className="path">{f.path}</div>
-            </div>
+              </span>
+              <span className="path">{f.path}</span>
+            </button>
             <div className="stats">
               <span className="add">+{f.additions}</span>
               <span className="del">-{f.deletions}</span>
@@ -138,15 +136,15 @@ export function FileSidebar() {
         );
       })}
       {hidden.length > 0 && (
-        <div className="noise-toggle" onClick={toggleNoise}>
+        <button type="button" className="noise-toggle" onClick={toggleNoise}>
           + Show {hidden.length} noise file{hidden.length === 1 ? '' : 's'}{' '}
           <span style={{ color: 'var(--fg-faint)' }}>(lockfiles, generated, etc.)</span>
-        </div>
+        </button>
       )}
       {showNoise && hidden.length === 0 && files.some((f) => f.noise) && (
-        <div className="noise-toggle" onClick={toggleNoise}>
+        <button type="button" className="noise-toggle" onClick={toggleNoise}>
           Hide noise files
-        </div>
+        </button>
       )}
       </>
       )}

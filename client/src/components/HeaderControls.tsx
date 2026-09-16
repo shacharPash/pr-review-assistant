@@ -1,4 +1,5 @@
 import { usePrefs, type ModelPreference } from '../state/preferences.js';
+import { LocalDataControls } from './LocalDataControls.js';
 import { TokenBadge } from './TokenBadge.js';
 
 export function HeaderControls() {
@@ -7,14 +8,16 @@ export function HeaderControls() {
 
   return (
     <div className="controls">
+      <LocalDataControls />
       <TokenBadge />
       <SegmentedControl<ModelPreference>
-        label="AI mode"
+        label="AI model"
         value={modelPreference}
         onChange={setModelPreference}
         options={[
-          { value: 'fast', label: 'Fast', title: 'Sonnet on every AI feature — cheap and snappy, fine for routine PRs' },
-          { value: 'smart', label: 'Smart', title: 'Opus on TL;DR + diagram (where reasoning helps); Sonnet on the short outputs' },
+          { value: 'haiku', label: 'Haiku', title: 'Fastest and cheapest , great for quick questions and routine PRs' },
+          { value: 'sonnet', label: 'Sonnet', title: 'Balanced default , strong quality, much snappier than Opus' },
+          { value: 'opus', label: 'Opus', title: 'Strongest reasoning , slowest and priciest; best for gnarly PRs' },
         ]}
       />
     </div>
