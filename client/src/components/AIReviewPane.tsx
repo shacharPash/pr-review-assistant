@@ -92,10 +92,8 @@ export function AIReviewPane() {
       <div className="ai-review-empty">
         <div className="air-clean-badge" aria-hidden="true">ℹ</div>
         <div className="air-clean-title">{parsed.verdict === 'approve' ? 'No findings reported by AI' : 'Review completed without inline findings'}</div>
-        <div className="air-clean-sub">
-          {parsed.summary}
-          <p>This is an AI assessment of the supplied diff, which can be truncated and omit tests or hidden files. Review the change before deciding whether to approve.</p>
-        </div>
+        <div className="air-clean-sub"><SafeInline text={parsed.summary} /></div>
+        <p className="air-note">This is an AI assessment of the supplied diff, which can be truncated and omit tests or hidden files. Review the change before deciding whether to approve.</p>
         <button className="link-btn retry air-clean-retry" onClick={retry}>Re-run review</button>
       </div>
     );
@@ -103,7 +101,7 @@ export function AIReviewPane() {
 
   return (
     <div className="ai-review-body">
-      {historical && <p role="note">AI Review covers the full PR. Select All commits to stage a finding.</p>}
+      {historical && <p className="air-note" role="note">AI Review covers the full PR. Select All commits to stage a finding.</p>}
       <div className="air-header">
         <span className="air-count">{comments.length}</span>
         <span className="air-count-label">

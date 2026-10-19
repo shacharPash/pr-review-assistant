@@ -42,17 +42,11 @@ export function PRView() {
     return <LandingHero />;
   }
 
-  // Clamp the rail to at most ~50% of the viewport so a wide rail set on a
-  // big screen doesn't squash the diff column when the user moves to a
-  // smaller one. The setter still allows the value to grow; this just
-  // caps what we APPLY for layout.
-  const maxRailForView = typeof window !== 'undefined'
-    ? Math.max(280, Math.floor(window.innerWidth * 0.5))
-    : railWidth;
-  const effectiveRail = Math.min(railWidth, maxRailForView);
+  // Let CSS recompute the limit on resize, even when React does not rerender.
+  const railTrack = `min(${railWidth}px, max(280px, 50vw))`;
 
   return (
-    <div className="main" style={{ gridTemplateColumns: `${effectiveRail}px 6px minmax(0, 1fr)` }}>
+    <div className="main" style={{ gridTemplateColumns: `${railTrack} 6px minmax(0, 1fr)` }}>
       <aside className="left-rail">
         {/* The three sections scroll together; each can collapse to a slim
             header (Summary / Insights / Files) so the reviewer can focus.
