@@ -2891,6 +2891,7 @@ button { font: inherit; }
   border-right: 1px solid var(--border);
   background: var(--bg-elev);
   min-height: 0;
+  min-width: 0;
 }
 
 /* ---------- Left rail: one scroll area, three collapsible sections ---------- */
@@ -2957,6 +2958,8 @@ button { font: inherit; }
 .tldr {
   display: flex;
   flex-direction: column;
+  min-width: 0;
+  container: insights / inline-size;
   background:
     linear-gradient(180deg, var(--accent-soft) 0%, transparent 92px),
     var(--bg-card);
@@ -2965,17 +2968,26 @@ button { font: inherit; }
    view-mode toggles: a padded track with a raised pill for the active tab. */
 .tldr-tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: 2px;
   margin: 10px 10px 2px;
   padding: 3px;
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 9px;
-  overflow-x: auto;
-  scrollbar-width: none;
 }
-.tldr-tabs::-webkit-scrollbar { display: none; }
+.tldr-panel { min-width: 0; overflow-wrap: anywhere; }
+.tldr-tab:focus-visible,
+.tldr-panel:focus-visible,
+.tldr-panel button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+@container insights (max-width: 520px) {
+  .tab-sep { display: none; }
+}
 .tldr-tab {
+  flex-shrink: 0;
   background: transparent;
   border: none;
   color: var(--fg-dim);
@@ -3530,14 +3542,15 @@ button { font: inherit; }
 }
 .air-thinking-sub { font-size: 11px; color: var(--fg-faint); }
 
-/* Clean / ready-to-approve state */
-.ai-review-clean {
+/* Completed review without inline findings. */
+.ai-review-empty {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  text-align: center;
-  gap: 6px;
-  padding: 22px 18px 20px;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+  padding: 18px 16px;
+  overflow-wrap: anywhere;
 }
 .air-clean-badge {
   width: 38px;
@@ -3547,14 +3560,25 @@ button { font: inherit; }
   place-items: center;
   font-size: 20px;
   font-weight: 700;
-  color: var(--added);
-  background: var(--added-soft);
-  border: 1px solid color-mix(in srgb, var(--added) 45%, var(--border));
-  margin-bottom: 4px;
+  color: var(--info);
+  background: var(--info-soft);
+  border: 1px solid color-mix(in srgb, var(--info) 45%, var(--border));
+  flex-shrink: 0;
 }
 .air-clean-title { font-size: 14px; font-weight: 650; color: var(--fg); }
-.air-clean-sub { font-size: 12px; line-height: 1.5; color: var(--fg-dim); max-width: 34ch; }
-.air-clean-retry { margin-top: 6px; }
+.air-clean-sub { width: 100%; font-size: 13px; line-height: 1.6; color: var(--fg-dim); }
+.air-clean-retry { margin-top: 2px; }
+.air-note {
+  width: 100%;
+  margin: 0;
+  padding: 10px 12px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  color: var(--fg-dim);
+  font-size: 12px;
+  line-height: 1.5;
+}
 
 /* Suggestion card list */
 .ai-review-body {
@@ -3595,15 +3619,13 @@ button { font: inherit; }
   border: 1px solid var(--border);
   border-left: 3px solid var(--border-strong);
   border-radius: var(--r-sm);
-  cursor: pointer;
-  transition: background 0.12s, border-color 0.12s, transform 0.06s;
+  overflow-wrap: anywhere;
+  transition: background 0.12s, border-color 0.12s;
 }
 .air-card:hover {
   background: var(--bg-card-hover);
   border-color: var(--border-strong);
-  transform: translateY(-1px);
 }
-.air-card:active { transform: translateY(0); }
 
 .air-card.ai-sev-bug { border-left-color: var(--removed); }
 .air-card.ai-sev-security { border-left-color: var(--warn); }
@@ -3613,6 +3635,7 @@ button { font: inherit; }
 
 .air-card-top {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
 }
@@ -3628,6 +3651,7 @@ button { font: inherit; }
 .ai-sev-perf .air-sev { color: var(--test); }
 .ai-sev-convention .air-sev { color: var(--fg-dim); }
 .air-loc {
+  min-width: 0;
   font-family: var(--mono);
   font-size: 11px;
   color: var(--fg-faint);
@@ -3664,10 +3688,11 @@ button { font: inherit; }
   font-size: 11px;
   font-weight: 600;
   color: var(--accent);
-  opacity: 0;
-  transition: opacity 0.12s;
+  align-self: flex-start;
+  margin-top: 4px;
 }
-.air-card:hover .air-card-cta { opacity: 1; }
+.air-card-cta:disabled { color: var(--fg-faint); cursor: not-allowed; }
+.air-anchor-warning { color: var(--warn); font-size: 12px; line-height: 1.5; }
 .air-card.staged { border-left-color: var(--added); }
 .air-card.staged .air-card-cta { color: var(--added); }
 

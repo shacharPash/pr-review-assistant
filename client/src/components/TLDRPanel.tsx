@@ -1,6 +1,6 @@
 import { usePrivacy } from '../state/privacy.js';
 import { SafeInline } from '../lib/SafeMarkdown.js';
-import { Fragment, useEffect, useState } from 'react';
+import { Fragment, useEffect, useId, useState, type KeyboardEvent } from 'react';
 import { useStore } from '../state/store.js';
 import { usePrefs } from '../state/preferences.js';
 import { DiagramPanel } from './DiagramPanel.js';
@@ -28,6 +28,7 @@ const TABS: { id: TabId; emoji: string; label: string; ai?: boolean }[] = [
 ];
 
 export function TLDRPanel() {
+  const tabsId = useId();
   const aiEnabled = usePrivacy((s) => s.aiEnabled);
   const retryPersona = useStore((s) => s.retryPersona);
   const bundle = useStore((s) => s.bundle);
@@ -41,6 +42,18 @@ export function TLDRPanel() {
   useEffect(() => {
     if (bundle && aiEnabled && !collapsed) selectTab(activeTab);
   }, [bundle, aiEnabled, collapsed, activeTab, selectTab]);
+
+  function onTabKeyDown(event: KeyboardEvent<HTMLButtonElement>, index: number) {
+    const next = event.key === 'ArrowRight' ? (index + 1) % TABS.length
+      : event.key === 'ArrowLeft' ? (index + TABS.length - 1) % TABS.length
+      : event.key === 'Home' ? 0
+      : event.key === 'End' ? TABS.length - 1
+      : null;
+    if (next === null) return;
+    event.preventDefault();
+    // Focus alone must not start an AI request. Enter or Space activates the tab.
+    event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus();
+  }
 
   if (!bundle) return null;
   if (!aiEnabled) return <div className="tldr rail-section"><p>AI is off. Enable it in Local data &amp; AI to generate insights.</p><ReviewActivityPane /></div>;
@@ -56,7 +69,7 @@ export function TLDRPanel() {
   return (
     <div className="tldr rail-section">
       <RailSectionHead title="💡 Insights" collapsed={false} onToggle={toggleTLDR} />
-      <div className="tldr-tabs" role="tablist">
+      <div className="tldr-tabs" role="tablist" aria-label="Insights">
         {TABS.map((t, i) => {
           // Hairline separators bracket the AI pair from the utility tabs.
           const sepBefore = t.ai && !TABS[i - 1]?.ai;
@@ -65,10 +78,15 @@ export function TLDRPanel() {
             <Fragment key={t.id}>
               {sepBefore && <span className="tab-sep" aria-hidden="true" />}
               <button
+                type="button"
+                id={`${tabsId}-tab-${t.id}`}
                 role="tab"
+                aria-controls={`${tabsId}-panel-${t.id}`}
                 aria-selected={activeTab === t.id}
+                tabIndex={activeTab === t.id ? 0 : -1}
                 className={`tldr-tab ${activeTab === t.id ? 'active' : ''} ${t.ai ? 'is-ai' : ''}`}
                 onClick={() => selectTab(t.id)}
+                onKeyDown={(event) => onTabKeyDown(event, i)}
               >
                 {t.ai ? (
                   <AIMark size={15} className="tab-ai-mark" />
@@ -83,21 +101,29 @@ export function TLDRPanel() {
         })}
       </div>
 
-      {activeTab === 'ai-review' && <AIReviewPane />}
-      {activeTab === 'ask' && <AskPane />}
-      {activeTab === 'explain' && (
-        <PersonaPaneExplain
-          result={personaResults.explain}
-          retry={() => retryPersona('explain')}
-        />
-      )}
-      {activeTab === 'checklist' && (
-        <PersonaPaneChecklist
-          result={personaResults.checklist}
-          retry={() => retryPersona('checklist')}
-        />
-      )}
-      {activeTab === 'activity' && <ReviewActivityPane />}
+      <div
+        className="tldr-panel"
+        role="tabpanel"
+        id={`${tabsId}-panel-${activeTab}`}
+        aria-labelledby={`${tabsId}-tab-${activeTab}`}
+        tabIndex={0}
+      >
+        {activeTab === 'ai-review' && <AIReviewPane />}
+        {activeTab === 'ask' && <AskPane />}
+        {activeTab === 'explain' && (
+          <PersonaPaneExplain
+            result={personaResults.explain}
+            retry={() => retryPersona('explain')}
+          />
+        )}
+        {activeTab === 'checklist' && (
+          <PersonaPaneChecklist
+            result={personaResults.checklist}
+            retry={() => retryPersona('checklist')}
+          />
+        )}
+        {activeTab === 'activity' && <ReviewActivityPane />}
+      </div>
 
       <DiagramPanel />
     </div>
