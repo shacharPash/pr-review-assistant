@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parsePRRef, GHError } from '../ghFetcher.js';
+import { parsePRRef, GHError, isValidGitHubName } from '../ghFetcher.js';
 
 describe('parsePRRef', () => {
   it('parses a full https GitHub URL', () => {
@@ -43,5 +43,45 @@ describe('parsePRRef', () => {
     expect(() => parsePRRef('foo/bar; rm -rf /#1')).toThrow(GHError);
     expect(() => parsePRRef('not a valid ref')).toThrow(GHError);
     expect(() => parsePRRef('missing-the-number')).toThrow(GHError);
+  });
+
+  it('accepts owner and repo names with dots, dashes and underscores', () => {
+    const expected = { owner: 'my-org', repo: 'my_repo.js', number: 7 };
+    expect(parsePRRef('https://github.com/my-org/my_repo.js/pull/7/files')).toEqual(expected);
+    expect(parsePRRef('github.com/my-org/my_repo.js/pull/7')).toEqual(expected);
+    expect(parsePRRef('www.github.com/my-org/my_repo.js/pull/7')).toEqual(expected);
+    expect(parsePRRef('my-org/my_repo.js#7')).toEqual(expected);
+  });
+
+  it.each([
+    '@.env/repo#1',
+    'owner/@.env#1',
+    '{owner}/{repo}#1',
+    '../repo#1',
+    'owner/a/b#1',
+    `${'a'.repeat(101)}/repo#1`,
+    'https://github.com/@.env/repo/pull/1',
+    'https://github.com/owner/%7Brepo%7D/pull/1',
+  ])('rejects owner or repo names gh could misread: %s', (input) => {
+    expect(() => parsePRRef(input)).toThrow(GHError);
+  });
+
+  it.each([
+    'https://evil.example/?next=https://github.com/a/b/pull/1',
+    'https://notgithub.com/a/b/pull/1',
+    'https://github.com.evil.example/a/b/pull/1',
+  ])('only accepts URLs on github.com itself: %s', (input) => {
+    expect(() => parsePRRef(input)).toThrow(GHError);
+  });
+});
+
+describe('isValidGitHubName', () => {
+  it('accepts names up to 100 characters from the GitHub name alphabet', () => {
+    expect(isValidGitHubName('a'.repeat(100))).toBe(true);
+    expect(isValidGitHubName('.github')).toBe(true);
+  });
+
+  it.each(['', '.', '..', 'a'.repeat(101), '@.env', '{owner}', 'a b', 'a/b', 'a#1', 42, null])('rejects %j', (value) => {
+    expect(isValidGitHubName(value)).toBe(false);
   });
 });

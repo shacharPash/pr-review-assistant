@@ -3,7 +3,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import type { PRBundle } from '../../../shared/types.js';
 const fixture = vi.hoisted(() => ({ meta: { owner: 'synthetic', repo: 'repo', number: 812, headSha: 'head', baseSha: 'base', title: 'Same PR', body: '', author: 'synthetic', state: 'open', isDraft: false, reviewDecision: null, url: '' }, files: [], commitMessages: [] }));
 vi.mock('../ghFetcher.js', () => ({ fetchPR: async () => structuredClone(fixture), GHError: class GHError extends Error {} }));
-vi.mock('../guidelinesFetcher.js', () => ({ fetchGuidelines: async () => '' }));
+vi.mock('../guidelinesFetcher.js', async (original) => ({ ...(await original<typeof import('../guidelinesFetcher.js')>()), fetchGuidelines: async () => '' }));
 import { prRouter } from '../../routes/pr.js';
 import { aiReviewRouter } from '../../routes/aiReview.js';
 import { clearCache, getBundle, getGuidelines, setBundle } from '../cache.js';

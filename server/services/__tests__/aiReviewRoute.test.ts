@@ -7,9 +7,12 @@ import { aiReviewRouter } from '../../routes/aiReview.js';
 import { aiChatRouter } from '../../routes/aiChat.js';
 import { ClaudeRunner, type RunnerEvents } from '../claudeRunner.js';
 import { clearCache, getGuidelines, setBundle, setGuidelines } from '../cache.js';
-import type { PRBundle } from '../../../shared/types.js';
-const conventions = vi.hoisted(() => ({ read: vi.fn<() => Promise<string>>() }));
-vi.mock('../guidelinesFetcher.js', () => ({ fetchGuidelines: conventions.read }));
+import type { DiffFile, PRBundle } from '../../../shared/types.js';
+const conventions = vi.hoisted(() => ({ read: vi.fn<(owner: string, repo: string, ref: string) => Promise<string>>() }));
+vi.mock('../guidelinesFetcher.js', async (original) => ({
+  ...(await original<typeof import('../guidelinesFetcher.js')>()),
+  fetchGuidelines: conventions.read,
+}));
 
 let server: ReturnType<ReturnType<typeof express>['listen']>;
 let base: string;
@@ -43,6 +46,35 @@ afterEach(async () => {
 });
 const path = () => `/api/ai-review/stream?owner=synthetic&repo=repo&number=${number}&headSha=head`;
 const review = async (suffix = '') => (await fetch(base + path() + suffix)).text();
+
+describe('AI review repository conventions', () => {
+  const changedFile = (path: string, oldPath?: string): DiffFile => ({ path, oldPath, status: oldPath ? 'renamed' : 'modified',
+    additions: 1, deletions: 0, hunks: [], rawPatch: '@@ -1 +1 @@\n+Synthetic rule change', binary: false, noise: null });
+
+  it('reads conventions from the merge base, not the PR head, and refetches when the base moves', async () => {
+    await review();
+    expect(conventions.read).toHaveBeenLastCalledWith('synthetic', 'repo', 'base');
+    await review();
+    expect(conventions.read).toHaveBeenCalledOnce();
+    setBundle({ ...synthetic, meta: { ...synthetic.meta, number, baseSha: 'moved-base' } });
+    await review();
+    expect(conventions.read).toHaveBeenCalledTimes(2);
+    expect(conventions.read).toHaveBeenLastCalledWith('synthetic', 'repo', 'moved-base');
+    expect(start.mock.calls[0][0]).not.toContain('This PR changes');
+  });
+
+  it('tells the model when the PR changes a convention file', async () => {
+    setBundle({ ...synthetic, meta: { ...synthetic.meta, number }, files: [changedFile('CLAUDE.md')] });
+    await review();
+    expect(start.mock.calls[0][0]).toContain('This PR changes CLAUDE.md; its new content was not used as guidance.');
+  });
+
+  it('names every changed convention file, including renamed ones', async () => {
+    setBundle({ ...synthetic, meta: { ...synthetic.meta, number }, files: [changedFile('.cursorrules'), changedFile('docs/rules.md', 'AGENTS.md')] });
+    await review();
+    expect(start.mock.calls[0][0]).toContain('This PR changes AGENTS.md, .cursorrules; their new content was not used as guidance.');
+  });
+});
 
 describe('AI review cache and new route lifecycle', () => {
   it('replays normal reads but actually reruns with refresh=1', async () => {

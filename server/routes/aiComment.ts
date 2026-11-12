@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from 'express';
-import { ClaudeRunner } from '../services/claudeRunner.js';
+import { ClaudeRunner, UNTRUSTED_CONTEXT_RULE } from '../services/claudeRunner.js';
 import type { TokenUsage } from '../../shared/usage.js';
 
 export const aiCommentRouter = Router();
@@ -47,6 +47,8 @@ function buildSuggestPrompt(
 ): string {
   return `You are helping a code reviewer write a concrete code suggestion.
 
+${UNTRUSTED_CONTEXT_RULE}
+
 File: ${filePath}
 Lines: ${startLine}-${endLine}
 
@@ -72,6 +74,8 @@ function buildEnhancePrompt(
   filePath: string, startLine: number, endLine: number, code: string, draft: string,
 ): string {
   return `You are polishing a code-review comment so it's clear, specific, and useful.
+
+${UNTRUSTED_CONTEXT_RULE}
 
 File: ${filePath}
 Lines: ${startLine}-${endLine}

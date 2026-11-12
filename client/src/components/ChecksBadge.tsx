@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../state/store.js';
+import { safeHref } from '../lib/SafeMarkdown.js';
 import { summarize, type CheckRun, type ChecksSummary } from '@shared/checks';
 
 /**
@@ -162,7 +163,7 @@ function CheckRow({ run }: { run: CheckRun }) {
     <li className={`checks-row checks-row-${run.bucket}`}>
       <span className="checks-row-icon" aria-hidden>{rowIcon(run.bucket)}</span>
       <div className="checks-row-body">
-        <a href={run.link} target="_blank" rel="noreferrer" className="checks-row-name">
+        <a href={safeHref(run.link)} target="_blank" rel="noreferrer" className="checks-row-name">
           {run.name}
         </a>
         <span className="checks-row-meta">

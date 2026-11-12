@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import type { DiffFile } from '../../shared/types.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -25,11 +26,11 @@ const MAX_TOTAL_CHARS = 10_000;
 /** Per-file cap so one huge CONTRIBUTING.md can't crowd out the rest. */
 const MAX_FILE_CHARS = 4_000;
 
-async function fetchOne(owner: string, repo: string, path: string, headSha: string): Promise<string | null> {
+async function fetchOne(owner: string, repo: string, path: string, ref: string): Promise<string | null> {
   try {
     const { stdout } = await execFileAsync(
       'gh',
-      ['api', '-H', 'Accept: application/vnd.github.raw', `repos/${owner}/${repo}/contents/${path}?ref=${encodeURIComponent(headSha)}`],
+      ['api', '-H', 'Accept: application/vnd.github.raw', `repos/${owner}/${repo}/contents/${path}?ref=${encodeURIComponent(ref)}`],
       { maxBuffer: 5 * 1024 * 1024, timeout: 10_000 },
     );
     const text = stdout.trim();
@@ -42,12 +43,13 @@ async function fetchOne(owner: string, repo: string, path: string, headSha: stri
 }
 
 /**
- * Best-effort fetch of the repo's convention files at the reviewed head revision.
+ * Best-effort fetch of the repo's convention files at `ref`. Callers pass the
+ * PR's base revision so a PR cannot supply its own review rules.
  * Returns a single formatted string ready to inline in a prompt, or '' when
  * the repo ships none (or gh is unavailable). Never throws.
  */
-export async function fetchGuidelines(owner: string, repo: string, headSha: string): Promise<string> {
-  const results = await Promise.all(CANDIDATE_PATHS.map((p) => fetchOne(owner, repo, p, headSha)));
+export async function fetchGuidelines(owner: string, repo: string, ref: string): Promise<string> {
+  const results = await Promise.all(CANDIDATE_PATHS.map((p) => fetchOne(owner, repo, p, ref)));
 
   const sections: string[] = [];
   let total = 0;
@@ -62,4 +64,10 @@ export async function fetchGuidelines(owner: string, repo: string, headSha: stri
   });
 
   return sections.join('\n\n');
+}
+
+/** Convention files that the PR itself adds, edits, renames or deletes. */
+export function changedGuidelinePaths(files: Pick<DiffFile, 'path' | 'oldPath'>[]): string[] {
+  const touched = new Set(files.flatMap((f) => [f.path, f.oldPath]));
+  return CANDIDATE_PATHS.filter((path) => touched.has(path));
 }

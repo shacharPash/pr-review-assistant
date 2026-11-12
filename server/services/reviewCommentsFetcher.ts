@@ -138,7 +138,8 @@ export function mapReviewThreads(resp: GHThreadsResponse): ReviewThread[] {
   return out;
 }
 
-async function fetchReviewThreads(owner: string, repo: string, number: number): Promise<ReviewThread[]> {
+/** Pure: gh args for the reviewThreads query. Only the numeric field is typed (`-F`). */
+export function reviewThreadsArgs(owner: string, repo: string, number: number): string[] {
   const query = `query($owner:String!,$repo:String!,$number:Int!){
     repository(owner:$owner,name:$repo){ pullRequest(number:$number){
       reviewThreads(first:100){ nodes{
@@ -149,9 +150,13 @@ async function fetchReviewThreads(owner: string, repo: string, number: number): 
         } }
       } }
     } } }`;
+  return ['api', 'graphql', '-f', `query=${query}`, '-f', `owner=${owner}`, '-f', `repo=${repo}`, '-F', `number=${number}`];
+}
+
+async function fetchReviewThreads(owner: string, repo: string, number: number): Promise<ReviewThread[]> {
   const { stdout } = await execFileAsync(
     'gh',
-    ['api', 'graphql', '-f', `query=${query}`, '-F', `owner=${owner}`, '-F', `repo=${repo}`, '-F', `number=${number}`],
+    reviewThreadsArgs(owner, repo, number),
     { timeout: 30_000, maxBuffer: 50 * 1024 * 1024, encoding: 'utf8' },
   );
   const resp = JSON.parse(stdout.trim() || '{}') as GHThreadsResponse;
