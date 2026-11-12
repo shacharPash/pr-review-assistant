@@ -1,6 +1,7 @@
 import { cacheGeneration, isCurrentGeneration } from '../services/cacheLifecycle.js';
 import { Router, type Request, type Response } from 'express';
 import { fetchPRReviewComments } from '../services/reviewCommentsFetcher.js';
+import { isValidGitHubName } from '../services/ghFetcher.js';
 import { getBundle, getReviewComments, setReviewComments } from '../services/cache.js';
 import { postReply, setResolved, isValidInReplyTo, isValidThreadId } from '../services/reviewCommentsWriter.js';
 
@@ -54,6 +55,9 @@ reviewCommentsRouter.post('/api/pr/review-comments/reply', async (req: Request, 
   if (!owner || !repo || !number || !headSha || !inReplyTo || typeof body !== 'string' || !body.trim()) {
     return res.status(400).json({ ok: false, error: 'Missing required fields.' });
   }
+  if (!isValidGitHubName(owner) || !isValidGitHubName(repo)) {
+    return res.status(400).json({ ok: false, error: 'Invalid repository.' });
+  }
   if (!isValidInReplyTo(String(inReplyTo))) {
     return res.status(400).json({ ok: false, error: 'Invalid reply target.' });
   }
@@ -72,6 +76,9 @@ reviewCommentsRouter.post('/api/pr/review-comments/resolve', async (req: Request
   const { owner, repo, number, headSha, threadId, resolved } = req.body ?? {};
   if (!owner || !repo || !number || !headSha || !threadId || typeof resolved !== 'boolean') {
     return res.status(400).json({ ok: false, error: 'Missing required fields.' });
+  }
+  if (!isValidGitHubName(owner) || !isValidGitHubName(repo)) {
+    return res.status(400).json({ ok: false, error: 'Invalid repository.' });
   }
   if (!isValidThreadId(String(threadId))) {
     return res.status(400).json({ ok: false, error: 'Invalid thread id.' });

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mapReviewThreads, type GHThreadsResponse } from '../reviewCommentsFetcher.js';
+import { mapReviewThreads, reviewThreadsArgs, type GHThreadsResponse } from '../reviewCommentsFetcher.js';
 
 const RESP: GHThreadsResponse = {
   data: { repository: { pullRequest: { reviewThreads: { nodes: [
@@ -68,5 +68,13 @@ describe('mapReviewThreads', () => {
     const t = mapReviewThreads(resp)[0];
     expect(t.comments[0].author.login).toBe('ghost');
     expect(t.comments[0].author.type).toBe('User');
+  });
+});
+
+describe('reviewThreadsArgs', () => {
+  it('sends owner and repo as raw strings and only the PR number as a typed field', () => {
+    const args = reviewThreadsArgs('@.env', '{repo}', 7);
+    expect(args.slice(0, 3)).toEqual(['api', 'graphql', '-f']);
+    expect(args.slice(4)).toEqual(['-f', 'owner=@.env', '-f', 'repo={repo}', '-F', 'number=7']);
   });
 });

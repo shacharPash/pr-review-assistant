@@ -20,18 +20,24 @@ interface ParsedRef {
   number: number;
 }
 
-const URL_RE = /github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/i;
+const URL_RE = /^(?:https?:\/\/)?(?:www\.)?github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/i;
 const SHORT_RE = /^([^/\s]+)\/([^#\s]+)#(\d+)$/;
+const NAME_RE = /^[A-Za-z0-9_.-]{1,100}$/;
+
+/** GitHub owner and repository names. Anything else must never reach `gh`. */
+export function isValidGitHubName(value: unknown): value is string {
+  return typeof value === 'string' && NAME_RE.test(value) && value !== '.' && value !== '..';
+}
 
 export function parsePRRef(input: string): ParsedRef {
   const trimmed = input.trim();
   const url = trimmed.match(URL_RE);
-  if (url) {
-    return { owner: url[1], repo: url[2].replace(/\.git$/, ''), number: Number(url[3]) };
-  }
-  const short = trimmed.match(SHORT_RE);
-  if (short) {
-    return { owner: short[1], repo: short[2], number: Number(short[3]) };
+  const short = url ? null : trimmed.match(SHORT_RE);
+  const [owner, repo, number] = url
+    ? [url[1], url[2].replace(/\.git$/, ''), url[3]]
+    : short ? [short[1], short[2], short[3]] : [];
+  if (isValidGitHubName(owner) && isValidGitHubName(repo)) {
+    return { owner, repo, number: Number(number) };
   }
   throw new GHError(
     'Could not parse PR reference. Use a GitHub URL or owner/repo#number.',

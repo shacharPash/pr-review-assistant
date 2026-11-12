@@ -55,7 +55,7 @@ aiReviewRouter.get('/api/ai-review/stream', async (req: Request, res: Response) 
   // empty string just means "no repo-specific rules to enforce".
   let guidelines = getGuidelines(owner, repo, number, headSha);
   if (guidelines === undefined) {
-    guidelines = await fetchGuidelines(owner, repo, headSha);
+    guidelines = await fetchGuidelines(owner, repo, bundle.meta.baseSha);
     if (!isCurrentGeneration(generation) || closed) { res.end(); return; }
     setGuidelines(owner, repo, number, headSha, guidelines);
   }

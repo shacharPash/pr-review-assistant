@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
-import type { editor as MonacoEditor, IDisposable, languages } from 'monaco-editor';
+import type { editor as MonacoEditor, IDisposable, IMarkdownString, languages } from 'monaco-editor';
 import type { BlameRange } from '@shared/types';
+import { safeHref } from '../lib/SafeMarkdown.js';
 
 interface Props {
   /** The modified-side editor or single editor (for added/deleted files). */
@@ -26,20 +27,9 @@ export function BlameHoverProvider({ editor, ranges }: Props) {
         );
         if (!range) return null;
 
-        const author = range.authorLogin
-          ? `@${range.authorLogin}`
-          : range.authorName ?? '(unknown)';
-        const when = relativeAge(range.authoredDate);
-        const shortSha = range.commitSha.slice(0, 7);
-        const headline = range.commitMessageHeadline.replace(/\|/g, '\\|');
-
         return {
           range: new m.Range(lineNumber, 1, lineNumber, 1),
-          contents: [
-            { value: `**${author}** · ${when}` },
-            { value: headline },
-            { value: `[${shortSha} on GitHub](${range.commitUrl})`, isTrusted: true },
-          ],
+          contents: blameHoverContents(range),
         };
       },
     };
@@ -52,6 +42,30 @@ export function BlameHoverProvider({ editor, ranges }: Props) {
   }, [editor, ranges]);
 
   return null;
+}
+
+/**
+ * Hover entries for one blame range. Author names and commit headlines come
+ * from the PR author, so they are rendered as plain text, never as markdown.
+ */
+export function blameHoverContents(range: BlameRange): IMarkdownString[] {
+  const author = range.authorLogin
+    ? `@${range.authorLogin}`
+    : range.authorName ?? '(unknown)';
+  const when = relativeAge(range.authoredDate);
+  const shortSha = range.commitSha.slice(0, 7);
+  const href = safeHref(range.commitUrl);
+
+  return [
+    { value: `**${plainText(author)}** · ${when}` },
+    { value: plainText(range.commitMessageHeadline) },
+    ...(href ? [{ value: `[${plainText(`${shortSha} on GitHub`)}](${href.replace(/[()]/g, '\\$&')})` }] : []),
+  ];
+}
+
+/** Backslash-escape every ASCII punctuation character so markdown shows it literally. */
+function plainText(value: string): string {
+  return value.replace(/\s+/g, ' ').trim().replace(/[!-/:-@[-`{-~]/g, '\\$&');
 }
 
 function relativeAge(iso: string): string {
