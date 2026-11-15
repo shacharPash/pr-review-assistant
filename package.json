@@ -21,7 +21,7 @@
   "dependencies": {
     "@monaco-editor/react": "^4.6.0",
     "express": "^4.22.3",
-    "mermaid": "^11.17.2",
+    "mermaid": "^12.3.0",
     "monaco-editor": "^0.56.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
