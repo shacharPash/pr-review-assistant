@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # One-step setup for PR Review Assistant.
-# Idempotent , re-runs are safe (will only do what's still needed).
+# Idempotent: re-runs are safe (will only do what's still needed).
 #
 # Usage:
 #   bash bin/setup.sh
@@ -57,7 +57,7 @@ else
 fi
 
 if ! command -v claude >/dev/null 2>&1; then
-  warn "claude CLI not found. Install from https://claude.ai/code , without it, AI features (brief / tweet / plain-english) won't work but the diff viewer still does."
+  warn "claude CLI not found. Install it from https://claude.ai/code to use the optional AI features. The diff viewer and reviews work without it."
 else
   ok "claude $(claude --version 2>/dev/null | head -1 || echo 'present')"
 fi
@@ -70,7 +70,7 @@ if [ ! -d node_modules ] || [ package-lock.json -nt node_modules/.package-lock.j
   npm ci
   ok "Dependencies installed"
 else
-  ok "Dependencies up to date , skipping npm ci"
+  ok "Dependencies up to date, skipping npm ci"
 fi
 
 title "Local config"
@@ -78,11 +78,11 @@ title "Local config"
 if [ ! -f .env ] && [ -f .env.example ]; then
   (umask 077; cp .env.example .env)
   ok "Created .env from .env.example"
-  warn "Optional: edit .env to enable Jira links , see README for details"
+  warn "Optional: edit .env to enable Jira links (see README for details)"
 elif [ -f .env ]; then
   ok ".env already present"
 else
-  warn ".env.example not found , skipping env setup"
+  warn ".env.example not found, skipping env setup"
 fi
 
 title "All set"

@@ -17,7 +17,7 @@ A lightweight, zero-configuration local web application designed to optimize the
  * Generates a concise, high-level summary (max 3-4 bullet points) explaining the business logic and *why* the changes were made.
  * **Constraint:** The AI must not attempt to "approve" or "review" the code. Its sole purpose is to onboard the human reviewer.
 ### 3.3. Guided Reading Order
- * The AI analyzes the diff and determines the most logical sequence to read the files (e.g., Interface \rightarrow Implementation \rightarrow Tests).
+ * The AI analyzes the diff and determines the most logical sequence to read the files (e.g., Interface → Implementation → Tests).
  * The UI presents a clickable sidebar navigating the files according to this recommended flow, overriding default alphabetical sorting.
 ### 3.4. IntelliJ-Style Diff Viewer
  * Utilizes Monaco Editor to render high-quality, side-by-side or inline diffs with Java syntax highlighting.
